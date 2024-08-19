@@ -159,7 +159,6 @@ func MapToParameters(paramsMap map[string]interface{}, ruleType string) *data.Pa
 	var params data.Parameters
 	validFields := GetValidFields(ruleType)
 	if validFields == nil {
-		zap.S().Infof("Rule type %s not found in validFields map\n", ruleType)
 		return nil
 	}
 

@@ -2,3 +2,5 @@
 /gh-migrate-rulesets.exe
 
 *.csv
+
+.DS_Store
