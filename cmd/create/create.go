@@ -162,7 +162,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter) error {
 					zap.S().Errorf("Error arose creating ruleset %s for %s", ruleset.Name, owner)
 					continue
 				}
-				fmt.Printf("Successfully create repository ruleset %s for %s", ruleset.Name, owner)
+				fmt.Printf("Successfully create repository ruleset %s for %s\n", ruleset.Name, owner)
 			} else if ruleset.SourceType == "Repository" {
 				zap.S().Debugf("Creating rulesets under %s", ruleset.Source)
 				err = g.CreateRepoLevelRuleset(ruleset.Source, reader)
@@ -170,12 +170,12 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter) error {
 					zap.S().Errorf("Error arose creating ruleset %s for %s", ruleset.Name, ruleset.Source)
 					continue
 				}
-				fmt.Printf("Successfully create repository ruleset %s for %s", ruleset.Name, ruleset.Source)
+				fmt.Printf("Successfully create repository ruleset %s for %s\n", ruleset.Name, ruleset.Source)
 			}
 		}
 	} else {
 		zap.S().Errorf("Error arose identifying rulesets and file data")
 	}
-	fmt.Printf("Successfully completed created repository rulesets from %s in org %s", cmdFlags.fileName, owner)
+	fmt.Printf("Successfully completed creating repository rulesets from %s in org %s", cmdFlags.fileName, owner)
 	return nil
 }

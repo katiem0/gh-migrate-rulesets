@@ -80,6 +80,7 @@ func NewCmdList() *cobra.Command {
 }
 
 func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGetter, reportWriter io.Writer) error {
+	fmt.Printf("Gathering repositories and/or rulesets for %s\n", owner)
 	var reposCursor, repoRulesCursor, orgRulesCursor *string
 	var allOrgRules []data.Rulesets
 	var allRepoRules []data.RepoNameRule
@@ -181,6 +182,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				}
 				rulesMap := utils.ProcessRules(orgLevelRuleset.Rules)
 
+				zap.S().Debugf("Writing output for org rule %s", singleRule.Name)
+
 				err = csvWriter.Write([]string{
 					orgLevelRuleset.SourceType,
 					"N/A",
@@ -224,8 +227,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 					zap.S().Error("Error raised in writing output", zap.Error(err))
 					return err
 				}
+
 			}
 		}
+		fmt.Printf("Successfully listed organization level rulesets for %s\n", owner)
 	}
 
 	if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
@@ -259,7 +264,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 			}
 		}
 		for _, repo := range allRepos {
-			zap.S().Infof("Gathering rulesets for repo %s", repo.Name)
+			zap.S().Infof("Checking for rulesets in repo %s", repo.Name)
 			for {
 				repoRulesetsQuery, err := g.GetRepoRulesetsList(owner, repo.Name, repoRulesCursor)
 				if err != nil {
@@ -305,6 +310,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				includeRefNames = strings.Join(repoLevelRuleset.Conditions.RefName.Include, ";")
 				excludeRefNames = strings.Join(repoLevelRuleset.Conditions.RefName.Exclude, ";")
 			}
+
+			zap.S().Debugf("Writing output for repo %s rule %s", singleRepoRule.RepoName, singleRepoRule.Rule.Name)
 
 			err = csvWriter.Write([]string{
 				repoLevelRuleset.SourceType,
@@ -352,12 +359,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 		}
 	}
 
-	fmt.Printf("Successfully listed repository level rulesets for %s", owner)
+	fmt.Printf("Successfully listed repository level rulesets for %s\n", owner)
 	csvWriter.Flush()
 
 	return nil
-}
-
-func ProcessActors(bypassActor []data.BypassActor) {
-	panic("unimplemented")
 }

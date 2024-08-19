@@ -75,6 +75,7 @@ func parseBypassActors(bypassActorsStr string) []data.BypassActor {
 }
 
 func parseConditions(conditions []string) *data.Conditions {
+	zap.S().Debugln("validating ruleset conditions")
 	return &data.Conditions{
 		RefName: &data.RefPatterns{
 			Include: strings.Split(conditions[0], ";"),
@@ -95,11 +96,9 @@ func parseConditions(conditions []string) *data.Conditions {
 func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
 	patterns := splitIgnoringBraces(patternsStr, "|")
 	propertyPatterns := make([]data.PropertyPattern, 0, len(patterns))
-
 	for _, pattern := range patterns {
 		patternData := strings.Split(pattern, ";")
 		if len(patternData) < 2 {
-			zap.S().Debug("No Repository Property - Include Conditions found")
 			continue
 		}
 		valueTrimmed := strings.Trim(patternData[2], "{}")
