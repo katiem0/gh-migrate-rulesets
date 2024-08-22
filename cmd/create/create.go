@@ -225,6 +225,8 @@ func runCmdCreate(owner string, repos []string, cmdFlags *cmdFlags, g *utils.API
 					}
 				}
 			}
+		} else {
+			zap.S().Infof("Invalid ruleType specified: %s", cmdFlags.ruleType)
 		}
 	} else {
 		zap.S().Errorf("Error arose identifying rulesets")
