@@ -56,7 +56,6 @@ func NewCmdList() *cobra.Command {
 			}
 
 			reportWriter, err := os.OpenFile(cmdFlags.listFile, os.O_WRONLY|os.O_CREATE, 0644)
-
 			if err != nil {
 				return err
 			}
@@ -67,27 +66,19 @@ func NewCmdList() *cobra.Command {
 
 	reportFileDefault := fmt.Sprintf("ruleset-%s.csv", time.Now().Format("20060102150405"))
 	ruleDefault := "all"
-	// Configure flags for command
 
 	listCmd.PersistentFlags().StringVarP(&cmdFlags.token, "token", "t", "", `GitHub Personal Access Token (default "gh auth token")`)
 	listCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
 	listCmd.Flags().StringVarP(&cmdFlags.listFile, "output-file", "o", reportFileDefault, "Name of file to write CSV list to")
 	listCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
-
 	listCmd.PersistentFlags().BoolVarP(&cmdFlags.debug, "debug", "d", false, "To debug logging")
-
 	return listCmd
 }
 
 func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGetter, reportWriter io.Writer) error {
 	fmt.Printf("Gathering repositories and/or rulesets for %s\n", owner)
-	var reposCursor, repoRulesCursor, orgRulesCursor *string
-	var allOrgRules []data.Rulesets
-	var allRepoRules []data.RepoNameRule
-	var allRepos []data.RepoInfo
 
 	csvWriter := csv.NewWriter(reportWriter)
-
 	err := csvWriter.Write([]string{
 		"RulesetLevel",
 		"RepositoryName",
@@ -134,24 +125,12 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 
 	if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "orgOnly" {
 		zap.S().Infof("Gathering organization %s level rulesets", owner)
-		for {
-			orgRulesetsQuery, err := g.GetOrgRulesetsList(owner, orgRulesCursor)
-			if err != nil {
-				zap.S().Error("Error raised in getting organization ruleset list", zap.Error(err))
-				return err
-			}
-
-			allOrgRules = append(allOrgRules, orgRulesetsQuery.Organization.Rulesets.Nodes...)
-			orgRulesCursor = &orgRulesetsQuery.Organization.Rulesets.PageInfo.EndCursor
-			if !orgRulesetsQuery.Organization.Rulesets.PageInfo.HasNextPage {
-				break
-			}
-
+		allOrgRules, err := g.FetchOrgRulesets(owner)
+		if err != nil {
+			zap.S().Error("Error raised in fetching org  ruleset data for %s", owner, zap.Error(err))
 		}
 
 		for _, singleRule := range allOrgRules {
-			var Actors, PropertyInclude, PropertyExclude []string
-			var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string
 
 			zap.S().Infof("Gathering specific ruleset data for org rule %s", singleRule.Name)
 			orgLevelRulesetResponse, err := g.GetOrgLevelRuleset(owner, singleRule.DatabaseID)
@@ -166,20 +145,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 					continue
 				}
 
-				Actors = utils.ProcessActors(orgLevelRuleset.BypassActors)
-				if orgLevelRuleset.Conditions != nil {
-					if orgLevelRuleset.Conditions.RepositoryProperty != nil {
-						PropertyInclude = utils.ProcessProperties(orgLevelRuleset.Conditions.RepositoryProperty.Include)
-						PropertyExclude = utils.ProcessProperties(orgLevelRuleset.Conditions.RepositoryProperty.Exclude)
-					}
-					if orgLevelRuleset.Conditions.RepositoryName != nil {
-						includeNames = strings.Join(orgLevelRuleset.Conditions.RepositoryName.Include, ";")
-						excludeNames = strings.Join(orgLevelRuleset.Conditions.RepositoryName.Exclude, ";")
-						boolNames = strconv.FormatBool(orgLevelRuleset.Conditions.RepositoryName.Protected)
-					}
-					includeRefNames = strings.Join(orgLevelRuleset.Conditions.RefName.Include, ";")
-					excludeRefNames = strings.Join(orgLevelRuleset.Conditions.RefName.Exclude, ";")
-				}
+				Actors := utils.ProcessActors(orgLevelRuleset.BypassActors)
+				orgConditions := utils.ProcessConditions(orgLevelRuleset)
 				rulesMap := utils.ProcessRules(orgLevelRuleset.Rules)
 
 				zap.S().Debugf("Writing output for org rule %s", singleRule.Name)
@@ -192,13 +159,13 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 					orgLevelRuleset.Target,
 					orgLevelRuleset.Enforcement,
 					strings.Join(Actors, "|"),
-					includeRefNames,
-					excludeRefNames,
-					includeNames,
-					excludeNames,
-					boolNames,
-					strings.Join(PropertyInclude, "|"),
-					strings.Join(PropertyExclude, "|"),
+					orgConditions.IncludeRefNames,
+					orgConditions.ExcludeRefNames,
+					orgConditions.IncludeNames,
+					orgConditions.ExcludeNames,
+					orgConditions.BoolNames,
+					strings.Join(orgConditions.PropertyInclude, "|"),
+					strings.Join(orgConditions.PropertyExclude, "|"),
 					rulesMap["creation"],
 					rulesMap["update"],
 					rulesMap["deletion"],
@@ -235,53 +202,17 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 
 	if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
 		zap.S().Infof("Gathering repositories specified in org %s to list rulesets for", owner)
-		if len(repos) > 0 {
-			zap.S().Infof("Processing repos: %s", repos)
-			for _, repo := range repos {
-				zap.S().Debugf("Processing %s/%s", owner, repo)
-				repoQuery, err := g.GetRepo(owner, repo)
-				if err != nil {
-					zap.S().Error("Error raised in getting repo", repo, zap.Error(err))
-					continue
-				} else {
-					allRepos = append(allRepos, repoQuery.Repository)
-				}
-			}
-		} else {
-			// Prepare writer for outputting report
-			for {
-				zap.S().Debugf("Processing list of repositories for %s", owner)
-				reposQuery, err := g.GetReposList(owner, reposCursor)
-				if err != nil {
-					zap.S().Error("Error raised in processing list of repos", zap.Error(err))
-					return err
-				}
-				allRepos = append(allRepos, reposQuery.Organization.Repositories.Nodes...)
-				reposCursor = &reposQuery.Organization.Repositories.PageInfo.EndCursor
-				if !reposQuery.Organization.Repositories.PageInfo.HasNextPage {
-					break
-				}
-			}
+		allRepos, err := g.GatherRepositories(owner, repos)
+		if err != nil {
+			zap.S().Error("Error raised in gathering repos", zap.Error(err))
+			return err
 		}
-		for _, repo := range allRepos {
-			zap.S().Infof("Checking for rulesets in repo %s", repo.Name)
-			for {
-				repoRulesetsQuery, err := g.GetRepoRulesetsList(owner, repo.Name, repoRulesCursor)
-				if err != nil {
-					return err
-				}
-				for _, rule := range repoRulesetsQuery.Repository.Rulesets.Nodes {
-					allRepoRules = append(allRepoRules, data.RepoNameRule{RepoName: repo.Name, Rule: rule})
-				}
-				repoRulesCursor = &repoRulesetsQuery.Repository.Rulesets.PageInfo.EndCursor
-				if !repoRulesetsQuery.Repository.Rulesets.PageInfo.HasNextPage {
-					break
-				}
-			}
+		allRepoRules, err := g.FetchRepoRulesets(owner, allRepos)
+		if err != nil {
+			zap.S().Error("Error raised in fetching repo ruleset data", zap.Error(err))
+			return err
 		}
 		for _, singleRepoRule := range allRepoRules {
-			var Actors, PropertyInclude, PropertyExclude []string
-			var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string
 			zap.S().Infof("Gathering specific ruleset data for repo %s rule %s", singleRepoRule.RepoName, singleRepoRule.Rule.Name)
 			repoLevelRulesetResponse, err := g.GetRepoLevelRuleset(owner, singleRepoRule.RepoName, singleRepoRule.Rule.DatabaseID)
 			if err != nil {
@@ -294,22 +225,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				zap.S().Error("Error raised with variable response", zap.Error(err))
 				continue
 			}
-			Actors = utils.ProcessActors(repoLevelRuleset.BypassActors)
+			Actors := utils.ProcessActors(repoLevelRuleset.BypassActors)
 			repoRulesMap := utils.ProcessRules(repoLevelRuleset.Rules)
 
-			if repoLevelRuleset.Conditions != nil {
-				if repoLevelRuleset.Conditions.RepositoryName != nil {
-					includeNames = strings.Join(repoLevelRuleset.Conditions.RepositoryName.Include, ";")
-					excludeNames = strings.Join(repoLevelRuleset.Conditions.RepositoryName.Exclude, ";")
-					boolNames = strconv.FormatBool(repoLevelRuleset.Conditions.RepositoryName.Protected)
-				}
-				if repoLevelRuleset.Conditions.RepositoryProperty != nil {
-					PropertyInclude = utils.ProcessProperties(repoLevelRuleset.Conditions.RepositoryProperty.Include)
-					PropertyExclude = utils.ProcessProperties(repoLevelRuleset.Conditions.RepositoryProperty.Exclude)
-				}
-				includeRefNames = strings.Join(repoLevelRuleset.Conditions.RefName.Include, ";")
-				excludeRefNames = strings.Join(repoLevelRuleset.Conditions.RefName.Exclude, ";")
-			}
+			repoConditions := utils.ProcessConditions(repoLevelRuleset)
 
 			zap.S().Debugf("Writing output for repo %s rule %s", singleRepoRule.RepoName, singleRepoRule.Rule.Name)
 
@@ -321,13 +240,13 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				repoLevelRuleset.Target,
 				repoLevelRuleset.Enforcement,
 				strings.Join(Actors, "|"),
-				includeRefNames,
-				excludeRefNames,
-				includeNames,
-				excludeNames,
-				boolNames,
-				strings.Join(PropertyInclude, "|"),
-				strings.Join(PropertyExclude, "|"),
+				repoConditions.IncludeRefNames,
+				repoConditions.ExcludeRefNames,
+				repoConditions.IncludeNames,
+				repoConditions.ExcludeNames,
+				repoConditions.BoolNames,
+				strings.Join(repoConditions.PropertyInclude, "|"),
+				strings.Join(repoConditions.PropertyExclude, "|"),
 				repoRulesMap["creation"],
 				repoRulesMap["update"],
 				repoRulesMap["deletion"],

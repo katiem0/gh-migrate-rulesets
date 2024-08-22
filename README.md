@@ -111,7 +111,13 @@ The output `csv` file contains the following information:
 Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined in [`gh-migrate-rulesets list`](#list-repository-rulesets).
 
 > [!NOTE]
-> Be sure to update the `repository_id` in RulesWorkflows field for required workflows for the correct repository under the new Organization else the addition of this ruleset will fail.
+> If your rulesets include the following rules, ensure that the `csv` has been updated to point to the update information under your organization:
+>
+> - Bypass Actors: Update Actor ID for teams and users
+> - Status Checks: Ensure Context name exists and update Integration ID
+> - Code Scanning: Ensure Tool name exists
+> - Workflows: Update Repository ID to point to the correct repo/workflow
+> - Required Deployments: Ensure deployment names exist for the repository
 
 ```sh
 $ gh migrate-rulesets create -h                                                   

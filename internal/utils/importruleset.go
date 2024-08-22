@@ -94,7 +94,7 @@ func parseConditions(conditions []string) *data.Conditions {
 }
 
 func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
-	patterns := splitIgnoringBraces(patternsStr, "|")
+	patterns := SplitIgnoringBraces(patternsStr, "|")
 	propertyPatterns := make([]data.PropertyPattern, 0, len(patterns))
 	for _, pattern := range patterns {
 		patternData := strings.Split(pattern, ";")
@@ -123,7 +123,7 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 			Type: header,
 		}
 		if ruleValues[i] != "" {
-			parameters := parseParameters(ruleValues[i])
+			parameters := ParseParameters(ruleValues[i])
 			rule.Parameters = MapToParameters(parameters, header)
 		} else {
 			zap.S().Debugf("%s does not contain Parameters", header)
@@ -131,74 +131,6 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 		rules = append(rules, rule)
 	}
 	return rules
-}
-
-func parseParameters(paramStr string) map[string]interface{} {
-	params := make(map[string]interface{})
-	if paramStr == "" {
-		return nil
-	} else {
-		paramPairs := splitIgnoringBraces(paramStr, "|")
-		for _, pair := range paramPairs {
-			kv := strings.Split(pair, ":")
-			if len(kv) != 2 {
-				continue
-			}
-			key := kv[0]
-			value := kv[1]
-
-			if strings.Contains(value, "{") {
-				subGroups := strings.Split(value, ";")
-
-				var subMap []map[string]string
-				for _, subGroup := range subGroups {
-					valueTrimmed := strings.Trim(subGroup, "{}")
-					pairGroups := strings.Split(valueTrimmed, "|")
-					subGroupMap := make(map[string]string)
-					for _, pairGroup := range pairGroups {
-						subKv := strings.Split(pairGroup, "=")
-						if len(subKv) == 2 {
-							subGroupMap[subKv[0]] = subKv[1]
-						}
-					}
-					subMap = append(subMap, subGroupMap)
-				}
-				params[key] = subMap
-			} else if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-				value = strings.Trim(value, "[]")
-				params[key] = strings.Split(value, " ")
-			} else {
-				params[key] = value
-			}
-		}
-		return params
-	}
-}
-
-func splitIgnoringBraces(s, delimiter string) []string {
-	var result []string
-	var currentSegment strings.Builder
-	inBraces := false
-
-	for i := 0; i < len(s); i++ {
-		char := s[i]
-
-		if char == '{' {
-			inBraces = true
-		} else if char == '}' {
-			inBraces = false
-		}
-
-		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
-			result = append(result, currentSegment.String())
-			currentSegment.Reset()
-			i += len(delimiter) - 1
-		} else {
-			currentSegment.WriteByte(char)
-		}
-	}
-	result = append(result, currentSegment.String())
-	return result
 }
 
 func CleanConditions(conditions *data.Conditions) *data.Conditions {
@@ -286,4 +218,80 @@ func UpdateTag(field reflect.StructField, key, value string) reflect.StructField
 		field.Tag = reflect.StructTag(key + `:"` + strings.Join(newParts, ",") + `"`)
 	}
 	return field
+}
+
+func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
+	createRuleset := data.CreateRuleset{
+		Name:         ruleset.Name,
+		Target:       ruleset.Target,
+		Enforcement:  ruleset.Enforcement,
+		BypassActors: ruleset.BypassActors,
+		Conditions:   ruleset.Conditions,
+		Rules:        make([]data.CreateRules, len(ruleset.Rules)),
+	}
+	zap.S().Debugf("Removing omitempty from fields if needed from ruleset: %s", ruleset.Name)
+	for i, rule := range ruleset.Rules {
+		if rule.Parameters == nil {
+			createRuleset.Rules[i].Type = rule.Type
+			continue
+		} else {
+			v := reflect.ValueOf(rule.Parameters).Elem()
+			t := v.Type()
+
+			newFields := make([]reflect.StructField, v.NumField())
+			for j := 0; j < v.NumField(); j++ {
+				fieldType := t.Field(j)
+				fieldName := fieldType.Name
+
+				if fields, ok := data.NonOmitEmptyFields[rule.Type]; ok {
+					if Contains(fields, fieldName) {
+						fieldType = UpdateTag(fieldType, "json", fieldName)
+					}
+				}
+				newFields[j] = fieldType
+			}
+			newStructType := reflect.StructOf(newFields)
+			newStruct := reflect.New(newStructType).Elem()
+			for j := 0; j < v.NumField(); j++ {
+				fieldValue := v.Field(j)
+				if fieldValue.Kind() == reflect.Slice && fieldValue.Type().Elem().Kind() == reflect.String {
+					newStruct.Field(j).Set(reflect.MakeSlice(fieldValue.Type(), fieldValue.Len(), fieldValue.Cap()))
+					for k := 0; k < fieldValue.Len(); k++ {
+						newStruct.Field(j).Index(k).Set(fieldValue.Index(k))
+					}
+				} else {
+					newStruct.Field(j).Set(fieldValue)
+				}
+			}
+			createRuleset.Rules[i].Type = rule.Type
+			createRuleset.Rules[i].Parameters = newStruct.Interface()
+		}
+	}
+	return createRuleset, nil
+}
+
+func SplitIgnoringBraces(s, delimiter string) []string {
+	var result []string
+	var currentSegment strings.Builder
+	inBraces := false
+
+	for i := 0; i < len(s); i++ {
+		char := s[i]
+
+		if char == '{' {
+			inBraces = true
+		} else if char == '}' {
+			inBraces = false
+		}
+
+		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
+			result = append(result, currentSegment.String())
+			currentSegment.Reset()
+			i += len(delimiter) - 1
+		} else {
+			currentSegment.WriteByte(char)
+		}
+	}
+	result = append(result, currentSegment.String())
+	return result
 }

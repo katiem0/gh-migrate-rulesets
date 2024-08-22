@@ -58,6 +58,8 @@ type Getter interface {
 	GetRepoRulesetsList(owner string, endCursor *string) (*data.RepoRulesetsQuery, error)
 	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
 	CreateOrgLevelRuleset(owner string, data io.Reader) error
+	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
+	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
 }
 
 type APIGetter struct {
@@ -174,4 +176,89 @@ func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) err
 
 	defer resp.Body.Close()
 	return err
+}
+
+func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
+	var allOrgRules []data.Rulesets
+	var orgRulesCursor *string
+
+	for {
+		orgRulesetsQuery, err := g.GetOrgRulesetsList(owner, orgRulesCursor)
+		if err != nil {
+			zap.S().Error("Error getting organization ruleset list", zap.Error(err))
+			return nil, err
+		}
+
+		allOrgRules = append(allOrgRules, orgRulesetsQuery.Organization.Rulesets.Nodes...)
+		orgRulesCursor = &orgRulesetsQuery.Organization.Rulesets.PageInfo.EndCursor
+
+		if !orgRulesetsQuery.Organization.Rulesets.PageInfo.HasNextPage {
+			break
+		}
+	}
+
+	return allOrgRules, nil
+}
+
+func (g *APIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error) {
+	var allRepoRules []data.RepoNameRule
+	var repoRulesCursor *string
+
+	for _, repo := range repos {
+		zap.S().Infof("Checking for rulesets in repo %s", repo.Name)
+		for {
+			repoRulesetsQuery, err := g.GetRepoRulesetsList(owner, repo.Name, repoRulesCursor)
+			if err != nil {
+				return nil, err
+			}
+			for _, rule := range repoRulesetsQuery.Repository.Rulesets.Nodes {
+				allRepoRules = append(allRepoRules, data.RepoNameRule{RepoName: repo.Name, Rule: rule})
+			}
+			repoRulesCursor = &repoRulesetsQuery.Repository.Rulesets.PageInfo.EndCursor
+			if !repoRulesetsQuery.Repository.Rulesets.PageInfo.HasNextPage {
+				break
+			}
+		}
+	}
+
+	return allRepoRules, nil
+}
+
+func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+	var allRepos []data.RepoInfo
+	var reposCursor *string
+
+	if len(repos) > 0 {
+		for _, repo := range repos {
+			repoQuery, err := g.GetRepo(owner, repo)
+			if err != nil {
+				zap.S().Error("Error raised in getting repo", repo, zap.Error(err))
+				continue
+			}
+			allRepos = append(allRepos, repoQuery.Repository)
+		}
+	} else {
+		for {
+			reposQuery, err := g.GetReposList(owner, reposCursor)
+			if err != nil {
+				zap.S().Error("Error raised in processing list of repos", zap.Error(err))
+				return nil, err
+			}
+			allRepos = append(allRepos, reposQuery.Organization.Repositories.Nodes...)
+			reposCursor = &reposQuery.Organization.Repositories.PageInfo.EndCursor
+			if !reposQuery.Organization.Repositories.PageInfo.HasNextPage {
+				break
+			}
+		}
+	}
+
+	return allRepos, nil
+}
+
+func LogErrorAndContinue(err error, message string) bool {
+	if err != nil {
+		zap.S().Errorf("%s: %v", message, err)
+		return true
+	}
+	return false
 }

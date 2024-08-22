@@ -55,3 +55,29 @@ func ProcessRules(rules []data.Rules) map[string]string {
 	}
 	return rulesMap
 }
+func ProcessConditions(ruleset data.RepoRuleset) data.ProcessedConditions {
+	var PropertyInclude, PropertyExclude []string
+	var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string
+	if ruleset.Conditions != nil {
+		if ruleset.Conditions.RepositoryName != nil {
+			includeNames = strings.Join(ruleset.Conditions.RepositoryName.Include, ";")
+			excludeNames = strings.Join(ruleset.Conditions.RepositoryName.Exclude, ";")
+			boolNames = strconv.FormatBool(ruleset.Conditions.RepositoryName.Protected)
+		}
+		if ruleset.Conditions.RepositoryProperty != nil {
+			PropertyInclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Include)
+			PropertyExclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Exclude)
+		}
+		includeRefNames = strings.Join(ruleset.Conditions.RefName.Include, ";")
+		excludeRefNames = strings.Join(ruleset.Conditions.RefName.Exclude, ";")
+	}
+	return data.ProcessedConditions{
+		IncludeNames:    includeNames,
+		ExcludeNames:    excludeNames,
+		BoolNames:       boolNames,
+		PropertyInclude: PropertyInclude,
+		PropertyExclude: PropertyExclude,
+		IncludeRefNames: includeRefNames,
+		ExcludeRefNames: excludeRefNames,
+	}
+}

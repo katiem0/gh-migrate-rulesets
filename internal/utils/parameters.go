@@ -281,3 +281,45 @@ func parseCodeScanning(value interface{}) []data.CodeScanning {
 	}
 	return codeScannings
 }
+
+func ParseParameters(paramStr string) map[string]interface{} {
+	params := make(map[string]interface{})
+	if paramStr == "" {
+		return nil
+	} else {
+		paramPairs := SplitIgnoringBraces(paramStr, "|")
+		for _, pair := range paramPairs {
+			kv := strings.Split(pair, ":")
+			if len(kv) != 2 {
+				continue
+			}
+			key := kv[0]
+			value := kv[1]
+
+			if strings.Contains(value, "{") {
+				subGroups := strings.Split(value, ";")
+
+				var subMap []map[string]string
+				for _, subGroup := range subGroups {
+					valueTrimmed := strings.Trim(subGroup, "{}")
+					pairGroups := strings.Split(valueTrimmed, "|")
+					subGroupMap := make(map[string]string)
+					for _, pairGroup := range pairGroups {
+						subKv := strings.Split(pairGroup, "=")
+						if len(subKv) == 2 {
+							subGroupMap[subKv[0]] = subKv[1]
+						}
+					}
+					subMap = append(subMap, subGroupMap)
+				}
+				params[key] = subMap
+			} else if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+				value = strings.Trim(value, "[]")
+				params[key] = strings.Split(value, " ")
+			} else {
+				params[key] = value
+			}
+		}
+		return params
+	}
+}
