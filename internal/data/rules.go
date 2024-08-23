@@ -148,3 +148,8 @@ type Workflows struct {
 	RepositoryID int    `json:"repository_id,omitempty"`
 	SHA          string `json:"sha,omitempty"`
 }
+
+type ErrorRulesets struct {
+	Source      string
+	RulesetName string
+}

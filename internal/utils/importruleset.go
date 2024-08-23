@@ -133,6 +133,32 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 	return rules
 }
 
+func SplitIgnoringBraces(s, delimiter string) []string {
+	var result []string
+	var currentSegment strings.Builder
+	inBraces := false
+
+	for i := 0; i < len(s); i++ {
+		char := s[i]
+
+		if char == '{' {
+			inBraces = true
+		} else if char == '}' {
+			inBraces = false
+		}
+
+		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
+			result = append(result, currentSegment.String())
+			currentSegment.Reset()
+			i += len(delimiter) - 1
+		} else {
+			currentSegment.WriteByte(char)
+		}
+	}
+	result = append(result, currentSegment.String())
+	return result
+}
+
 func CleanConditions(conditions *data.Conditions) *data.Conditions {
 	conditions.RefName.Include = CleanSlice(conditions.RefName.Include)
 	conditions.RefName.Exclude = CleanSlice(conditions.RefName.Exclude)
@@ -220,19 +246,11 @@ func UpdateTag(field reflect.StructField, key, value string) reflect.StructField
 	return field
 }
 
-func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
-	createRuleset := data.CreateRuleset{
-		Name:         ruleset.Name,
-		Target:       ruleset.Target,
-		Enforcement:  ruleset.Enforcement,
-		BypassActors: ruleset.BypassActors,
-		Conditions:   ruleset.Conditions,
-		Rules:        make([]data.CreateRules, len(ruleset.Rules)),
-	}
-	zap.S().Debugf("Removing omitempty from fields if needed from ruleset: %s", ruleset.Name)
-	for i, rule := range ruleset.Rules {
+func ProcessRulesets(rulesets []data.Rules) ([]data.CreateRules, error) {
+	createRules := make([]data.CreateRules, len(rulesets))
+	for i, rule := range rulesets {
 		if rule.Parameters == nil {
-			createRuleset.Rules[i].Type = rule.Type
+			createRules[i].Type = rule.Type
 			continue
 		} else {
 			v := reflect.ValueOf(rule.Parameters).Elem()
@@ -263,35 +281,9 @@ func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
 					newStruct.Field(j).Set(fieldValue)
 				}
 			}
-			createRuleset.Rules[i].Type = rule.Type
-			createRuleset.Rules[i].Parameters = newStruct.Interface()
+			createRules[i].Type = rule.Type
+			createRules[i].Parameters = newStruct.Interface()
 		}
 	}
-	return createRuleset, nil
-}
-
-func SplitIgnoringBraces(s, delimiter string) []string {
-	var result []string
-	var currentSegment strings.Builder
-	inBraces := false
-
-	for i := 0; i < len(s); i++ {
-		char := s[i]
-
-		if char == '{' {
-			inBraces = true
-		} else if char == '}' {
-			inBraces = false
-		}
-
-		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
-			result = append(result, currentSegment.String())
-			currentSegment.Reset()
-			i += len(delimiter) - 1
-		} else {
-			currentSegment.WriteByte(char)
-		}
-	}
-	result = append(result, currentSegment.String())
-	return result
+	return createRules, nil
 }

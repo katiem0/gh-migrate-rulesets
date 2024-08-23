@@ -57,9 +57,11 @@ type Getter interface {
 	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
 	GetRepoRulesetsList(owner string, endCursor *string) (*data.RepoRulesetsQuery, error)
 	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
-	CreateOrgLevelRuleset(owner string, data io.Reader) error
-	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
-	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
+	CreateOrgLevelRuleset(owner string, data io.Reader)
+	CreateRepoLevelRuleset(ownerRepo string, data io.Reader)
+	FetchOrgRulesets(owner string) []data.Rulesets
+	GatherRepositories(owner string, repos []string) []data.RepoInfo
+	RepoExists(ownerRepo string) bool
 }
 
 type APIGetter struct {
@@ -114,15 +116,17 @@ func (g *APIGetter) GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, err
 
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error getting repo level ruleset for %s: %v", owner, err)
+		return nil, err
 	}
+	defer resp.Body.Close()
 
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error reading response body for repo level ruleset %s: %v", owner, err)
+		return nil, err
 	}
-
-	return responseData, err
+	return responseData, nil
 }
 
 func (g *APIGetter) GetRepoRulesetsList(owner string, repo string, endCursor *string) (*data.RepoRulesetsQuery, error) {
@@ -143,15 +147,17 @@ func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int
 
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error getting repo level ruleset for %s/%s: %v", owner, repo, err)
+		return nil, nil
 	}
+	defer resp.Body.Close()
 
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error reading response body for repo level ruleset %s/%s: %v", owner, repo, err)
+		return nil, nil
 	}
-
-	return responseData, err
+	return responseData, nil
 }
 
 func (g *APIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
@@ -159,11 +165,11 @@ func (g *APIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
 
 	resp, err := g.restClient.Request("POST", url, data)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error creating org level ruleset for %s: %v", owner, err)
+		return nil
 	}
-
 	defer resp.Body.Close()
-	return err
+	return nil
 }
 
 func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error {
@@ -171,11 +177,11 @@ func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) err
 
 	resp, err := g.restClient.Request("POST", url, data)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error creating repo level ruleset for %s: %v\n", ownerRepo, err)
+		return nil
 	}
-
 	defer resp.Body.Close()
-	return err
+	return nil
 }
 
 func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
@@ -202,9 +208,9 @@ func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
 
 func (g *APIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error) {
 	var allRepoRules []data.RepoNameRule
-	var repoRulesCursor *string
 
 	for _, repo := range repos {
+		var repoRulesCursor *string
 		zap.S().Infof("Checking for rulesets in repo %s", repo.Name)
 		for {
 			repoRulesetsQuery, err := g.GetRepoRulesetsList(owner, repo.Name, repoRulesCursor)
@@ -220,7 +226,6 @@ func (g *APIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]da
 			}
 		}
 	}
-
 	return allRepoRules, nil
 }
 
@@ -255,10 +260,16 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.Rep
 	return allRepos, nil
 }
 
-func LogErrorAndContinue(err error, message string) bool {
+func (g *APIGetter) RepoExists(ownerRepo string) bool {
+	url := fmt.Sprintf("repos/%s", ownerRepo)
+	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
-		zap.S().Errorf("%s: %v", message, err)
-		return true
+		if resp != nil && resp.StatusCode == 404 {
+			return false
+		}
+		log.Printf("Error checking if repo exists for %s: %v\n", ownerRepo, err)
+		return false
 	}
-	return false
+	defer resp.Body.Close()
+	return true
 }
