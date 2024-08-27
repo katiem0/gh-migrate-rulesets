@@ -1,26 +1,99 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/katiem0/gh-migrate-rulesets/internal/data"
+	"github.com/katiem0/gh-migrate-rulesets/internal/data" // Add this import
 	"go.uber.org/zap"
 )
 
-func ProcessActors(actors []data.BypassActor) []string {
+func (g *APIGetter) ProcessActors(actors []data.BypassActor, owner string, orgID int, ruleID string) []string {
 	zap.S().Debugf("Processing bypass actors")
 	var actorStrings []string
+	var actorName string
 	for _, actor := range actors {
+		if _, ok := data.RolesMap[strconv.Itoa(actor.ActorID)]; ok {
+			actorName = data.RolesMap[strconv.Itoa(actor.ActorID)]
+		} else {
+			if actor.ActorType == "RepositoryRole" {
+				zap.S().Debugf("Processing bypass actor custom repository role")
+				roleData, err := g.GetCustomRoles(owner, actor.ActorID)
+				if err != nil {
+					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				}
+				var roleName data.CustomRole
+				err = json.Unmarshal(roleData, &roleName)
+				if err != nil {
+					zap.S().Errorf("Failed to unmarshal custom role data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				}
+				actorName = roleName.Name
+			} else if actor.ActorType == "Integration" {
+				zap.S().Debugf("Processing bypass actor integration")
+				appIntegrationData, err := g.GetAppInstallations(owner)
+				if err != nil {
+					zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				}
+				for _, appIntegration := range appIntegrationData.Installations {
+					if appIntegration.AppID == actor.ActorID {
+						actorName = appIntegration.AppSlug
+					}
+				}
+			} else if actor.ActorType == "Team" {
+				zap.S().Debugf("Processing bypass actor team")
+				teamData, err := g.GetTeamData(orgID, actor.ActorID)
+				if err != nil {
+					zap.S().Errorf("Failed to get team data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				}
+				actorName = teamData.Name
+			} else {
+				fmt.Printf("Invalid actor type: %s", actor.ActorType)
+				actorName = ""
+			}
+		}
+
 		actorList := []string{
 			strconv.Itoa(actor.ActorID),
 			actor.ActorType,
+			actorName,
 			actor.BypassMode,
 		}
 		actorStrings = append(actorStrings, strings.Join(actorList, ";"))
 	}
 	return actorStrings
+}
+
+func ProcessConditions(ruleset data.RepoRuleset) data.ProcessedConditions {
+	var PropertyInclude, PropertyExclude []string
+	var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string
+	if ruleset.Conditions != nil {
+		if ruleset.Conditions.RepositoryName != nil {
+			includeNames = strings.Join(ruleset.Conditions.RepositoryName.Include, ";")
+			excludeNames = strings.Join(ruleset.Conditions.RepositoryName.Exclude, ";")
+			boolNames = strconv.FormatBool(ruleset.Conditions.RepositoryName.Protected)
+		}
+		if ruleset.Conditions.RepositoryProperty != nil {
+			PropertyInclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Include)
+			PropertyExclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Exclude)
+		}
+		includeRefNames = strings.Join(ruleset.Conditions.RefName.Include, ";")
+		excludeRefNames = strings.Join(ruleset.Conditions.RefName.Exclude, ";")
+	}
+	return data.ProcessedConditions{
+		IncludeNames:    includeNames,
+		ExcludeNames:    excludeNames,
+		BoolNames:       boolNames,
+		PropertyInclude: PropertyInclude,
+		PropertyExclude: PropertyExclude,
+		IncludeRefNames: includeRefNames,
+		ExcludeRefNames: excludeRefNames,
+	}
 }
 
 func ProcessProperties(properties []data.PropertyPattern) []string {
@@ -54,30 +127,4 @@ func ProcessRules(rules []data.Rules) map[string]string {
 		}
 	}
 	return rulesMap
-}
-func ProcessConditions(ruleset data.RepoRuleset) data.ProcessedConditions {
-	var PropertyInclude, PropertyExclude []string
-	var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string
-	if ruleset.Conditions != nil {
-		if ruleset.Conditions.RepositoryName != nil {
-			includeNames = strings.Join(ruleset.Conditions.RepositoryName.Include, ";")
-			excludeNames = strings.Join(ruleset.Conditions.RepositoryName.Exclude, ";")
-			boolNames = strconv.FormatBool(ruleset.Conditions.RepositoryName.Protected)
-		}
-		if ruleset.Conditions.RepositoryProperty != nil {
-			PropertyInclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Include)
-			PropertyExclude = ProcessProperties(ruleset.Conditions.RepositoryProperty.Exclude)
-		}
-		includeRefNames = strings.Join(ruleset.Conditions.RefName.Include, ";")
-		excludeRefNames = strings.Join(ruleset.Conditions.RefName.Exclude, ";")
-	}
-	return data.ProcessedConditions{
-		IncludeNames:    includeNames,
-		ExcludeNames:    excludeNames,
-		BoolNames:       boolNames,
-		PropertyInclude: PropertyInclude,
-		PropertyExclude: PropertyExclude,
-		IncludeRefNames: includeRefNames,
-		ExcludeRefNames: excludeRefNames,
-	}
 }

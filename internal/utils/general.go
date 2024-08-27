@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strconv"
+	"strings"
 
 	"github.com/cli/go-gh"
 	"github.com/cli/go-gh/pkg/api"
@@ -13,14 +14,6 @@ import (
 	"github.com/shurcooL/graphql"
 	"go.uber.org/zap"
 )
-
-func GetAuthToken(token, hostname string) string {
-	if token != "" {
-		return token
-	}
-	t, _ := auth.TokenForHost(hostname)
-	return t
-}
 
 func InitializeClients(hostname, authToken string) (api.RESTClient, api.GQLClient, error) {
 	restClient, err := gh.RESTClient(&api.ClientOptions{
@@ -50,15 +43,27 @@ func InitializeClients(hostname, authToken string) (api.RESTClient, api.GQLClien
 	return restClient, gqlClient, nil
 }
 
+func GetAuthToken(token, hostname string) string {
+	if token != "" {
+		return token
+	}
+	t, _ := auth.TokenForHost(hostname)
+	return t
+}
+
 type Getter interface {
+	GetAppInstallations(owner string) ([]byte, error)
+	GetCustomRoles(owner string, roleID int) ([]byte, error)
 	GetRepo(owner string, name string) ([]data.RepoSingleQuery, error)
 	GetReposList(owner string, endCursor *string) ([]data.ReposQuery, error)
 	GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error)
 	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
 	GetRepoRulesetsList(owner string, endCursor *string) (*data.RepoRulesetsQuery, error)
 	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
+	GetTeam(ownerID int, teamID int) ([]byte, error)
 	CreateOrgLevelRuleset(owner string, data io.Reader)
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader)
+	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) []data.Rulesets
 	GatherRepositories(owner string, repos []string) []data.RepoInfo
 	RepoExists(ownerRepo string) bool
@@ -76,97 +81,12 @@ func NewAPIGetter(gqlClient api.GQLClient, restClient api.RESTClient) *APIGetter
 	}
 }
 
-func (g *APIGetter) GetReposList(owner string, endCursor *string) (*data.ReposQuery, error) {
-	query := new(data.ReposQuery)
-	variables := map[string]interface{}{
-		"endCursor": (*graphql.String)(endCursor),
-		"owner":     graphql.String(owner),
-	}
-
-	err := g.gqlClient.Query("getRepos", &query, variables)
-
-	return query, err
-}
-
-func (g *APIGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, error) {
-	query := new(data.RepoSingleQuery)
-	variables := map[string]interface{}{
-		"owner": graphql.String(owner),
-		"name":  graphql.String(name),
-	}
-
-	err := g.gqlClient.Query("getRepo", &query, variables)
-	return query, err
-}
-
-func (g *APIGetter) GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error) {
-	query := new(data.OrgRulesetsQuery)
-	variables := map[string]interface{}{
-		"endCursor": (*graphql.String)(endCursor),
-		"owner":     graphql.String(owner),
-	}
-
-	err := g.gqlClient.Query("getOrgRulesets", &query, variables)
-
-	return query, err
-}
-
-func (g *APIGetter) GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error) {
-	url := fmt.Sprintf("orgs/%s/rulesets/%s", owner, strconv.Itoa(rulesetId))
-
-	resp, err := g.restClient.Request("GET", url, nil)
-	if err != nil {
-		log.Printf("Error getting repo level ruleset for %s: %v", owner, err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	responseData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Error reading response body for repo level ruleset %s: %v", owner, err)
-		return nil, err
-	}
-	return responseData, nil
-}
-
-func (g *APIGetter) GetRepoRulesetsList(owner string, repo string, endCursor *string) (*data.RepoRulesetsQuery, error) {
-	query := new(data.RepoRulesetsQuery)
-	variables := map[string]interface{}{
-		"endCursor": (*graphql.String)(endCursor),
-		"owner":     graphql.String(owner),
-		"name":      graphql.String(repo),
-	}
-
-	err := g.gqlClient.Query("getRepoRulesets", &query, variables)
-
-	return query, err
-}
-
-func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
-	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
-
-	resp, err := g.restClient.Request("GET", url, nil)
-	if err != nil {
-		log.Printf("Error getting repo level ruleset for %s/%s: %v", owner, repo, err)
-		return nil, nil
-	}
-	defer resp.Body.Close()
-
-	responseData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Error reading response body for repo level ruleset %s/%s: %v", owner, repo, err)
-		return nil, nil
-	}
-	return responseData, nil
-}
-
 func (g *APIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
 	url := fmt.Sprintf("orgs/%s/rulesets", owner)
 
 	resp, err := g.restClient.Request("POST", url, data)
 	if err != nil {
-		log.Printf("Error creating org level ruleset for %s: %v", owner, err)
-		return nil
+		return err
 	}
 	defer resp.Body.Close()
 	return nil
@@ -177,11 +97,19 @@ func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) err
 
 	resp, err := g.restClient.Request("POST", url, data)
 	if err != nil {
-		log.Printf("Error creating repo level ruleset for %s: %v\n", ownerRepo, err)
-		return nil
+		return err
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+func (g *APIGetter) FetchOrgId(owner string) (*data.OrgIdQuery, error) {
+	query := new(data.OrgIdQuery)
+	variables := map[string]interface{}{
+		"owner": graphql.String(owner),
+	}
+	err := g.gqlClient.Query("getOrgRulesets", &query, variables)
+	return query, err
 }
 
 func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
@@ -201,6 +129,7 @@ func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
 		if !orgRulesetsQuery.Organization.Rulesets.PageInfo.HasNextPage {
 			break
 		}
+
 	}
 
 	return allOrgRules, nil
@@ -256,8 +185,179 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.Rep
 			}
 		}
 	}
-
 	return allRepos, nil
+}
+
+func (g *APIGetter) GetAppInstallations(owner string) (*data.AppIntegrations, error) {
+	var allInstallations data.AppIntegrations
+	url := fmt.Sprintf("orgs/%s/installations?per_page=100", owner)
+	for {
+		resp, err := g.restClient.Request("GET", url, nil)
+		if err != nil {
+			zap.S().Error("Error raised in getting app installations", zap.Error(err))
+			return nil, err
+		}
+		defer resp.Body.Close()
+		responseData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			zap.S().Error("Error reading response body", zap.Error(err))
+			return nil, err
+		}
+		var tempInstallations data.AppIntegrations
+		err = json.Unmarshal(responseData, &tempInstallations)
+		if err != nil {
+			zap.S().Error("Error unmarshalling response data", zap.Error(err))
+			return nil, err
+		}
+		allInstallations.TotalCount = tempInstallations.TotalCount
+		allInstallations.Installations = append(allInstallations.Installations, tempInstallations.Installations...)
+
+		linkHeader := resp.Header.Get("Link")
+		if linkHeader == "" {
+			break
+		}
+		nextURL := getNextPageURL(linkHeader)
+		if nextURL == "" {
+			break
+		}
+		url = nextURL
+	}
+	return &allInstallations, nil
+}
+
+func getNextPageURL(linkHeader string) string {
+	const prefix = "https://api.github.com/"
+	links := strings.Split(linkHeader, ",")
+	for _, link := range links {
+		parts := strings.Split(strings.TrimSpace(link), ";")
+		if len(parts) < 2 {
+			continue
+		}
+		urlPart := strings.Trim(parts[0], "<>")
+		relPart := strings.TrimSpace(parts[1])
+		if relPart == `rel="next"` {
+			return strings.TrimPrefix(urlPart, prefix)
+		}
+	}
+	return ""
+}
+
+func (g *APIGetter) GetCustomRoles(owner string, roleID int) ([]byte, error) {
+	url := fmt.Sprintf("orgs/%s/custom-repository-roles/%s", owner, strconv.Itoa(roleID))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil
+	}
+	return responseData, nil
+}
+
+func (g *APIGetter) GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error) {
+	url := fmt.Sprintf("orgs/%s/rulesets/%s", owner, strconv.Itoa(rulesetId))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return responseData, nil
+}
+
+func (g *APIGetter) GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error) {
+	query := new(data.OrgRulesetsQuery)
+	variables := map[string]interface{}{
+		"endCursor": (*graphql.String)(endCursor),
+		"owner":     graphql.String(owner),
+	}
+
+	err := g.gqlClient.Query("getOrgRulesets", &query, variables)
+
+	return query, err
+}
+
+func (g *APIGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, error) {
+	query := new(data.RepoSingleQuery)
+	variables := map[string]interface{}{
+		"owner": graphql.String(owner),
+		"name":  graphql.String(name),
+	}
+
+	err := g.gqlClient.Query("getRepo", &query, variables)
+	return query, err
+}
+
+func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
+	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, nil
+	}
+	defer resp.Body.Close()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil
+	}
+	return responseData, nil
+}
+
+func (g *APIGetter) GetReposList(owner string, endCursor *string) (*data.ReposQuery, error) {
+	query := new(data.ReposQuery)
+	variables := map[string]interface{}{
+		"endCursor": (*graphql.String)(endCursor),
+		"owner":     graphql.String(owner),
+	}
+
+	err := g.gqlClient.Query("getRepos", &query, variables)
+
+	return query, err
+}
+
+func (g *APIGetter) GetRepoRulesetsList(owner string, repo string, endCursor *string) (*data.RepoRulesetsQuery, error) {
+	query := new(data.RepoRulesetsQuery)
+	variables := map[string]interface{}{
+		"endCursor": (*graphql.String)(endCursor),
+		"owner":     graphql.String(owner),
+		"name":      graphql.String(repo),
+	}
+
+	err := g.gqlClient.Query("getRepoRulesets", &query, variables)
+
+	return query, err
+}
+
+func (g *APIGetter) GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error) {
+	url := fmt.Sprintf("organizations/%s/team/%s", strconv.Itoa(ownerID), strconv.Itoa(teamID))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var teamName data.TeamInfo
+	err = json.Unmarshal(responseData, &teamName)
+	if err != nil {
+		return nil, err
+	}
+	return &teamName, nil
 }
 
 func (g *APIGetter) RepoExists(ownerRepo string) bool {
@@ -267,7 +367,6 @@ func (g *APIGetter) RepoExists(ownerRepo string) bool {
 		if resp != nil && resp.StatusCode == 404 {
 			return false
 		}
-		log.Printf("Error checking if repo exists for %s: %v\n", ownerRepo, err)
 		return false
 	}
 	defer resp.Body.Close()

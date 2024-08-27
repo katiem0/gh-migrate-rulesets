@@ -52,3 +52,11 @@ type ProcessedConditions struct {
 	IncludeRefNames string
 	ExcludeRefNames string
 }
+
+var RolesMap = map[string]string{
+	"0": "AllDeployKeys",
+	"1": "OrgAdmin",
+	"2": "Maintainer",
+	"4": "Write",
+	"5": "Admin",
+}

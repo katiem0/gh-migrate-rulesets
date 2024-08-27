@@ -42,6 +42,15 @@ func NewCmdList() *cobra.Command {
 				zap.ReplaceGlobals(logger)
 			}
 
+			validRuleTypes := map[string]struct{}{
+				"all":      {},
+				"repoOnly": {},
+				"orgOnly":  {},
+			}
+			if _, isValid := validRuleTypes[cmdFlags.ruleType]; !isValid {
+				return fmt.Errorf("invalid ruleType: %s. Valid values are 'all', 'repoOnly', or 'orgOnly'", cmdFlags.ruleType)
+			}
+
 			authToken = utils.GetAuthToken(cmdFlags.token, cmdFlags.hostname)
 			restClient, gqlClient, err := utils.InitializeClients(cmdFlags.hostname, authToken)
 			if err != nil {
@@ -123,29 +132,33 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 		return err
 	}
 
+	orgIDData, err := g.FetchOrgId(owner)
+	if err != nil {
+		zap.S().Error("Error raised in fetching org %s ID", owner)
+	}
+	orgID := orgIDData.Organization.DatabaseID
+
 	if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "orgOnly" {
 		zap.S().Infof("Gathering organization %s level rulesets", owner)
 		allOrgRules, err := g.FetchOrgRulesets(owner)
 		if err != nil {
-			zap.S().Error("Error raised in fetching org  ruleset data for %s", owner, zap.Error(err))
+			zap.S().Error("Error raised in fetching org  ruleset data for %s", owner)
 		}
 
 		for _, singleRule := range allOrgRules {
-
 			zap.S().Infof("Gathering specific ruleset data for org rule %s", singleRule.Name)
 			orgLevelRulesetResponse, err := g.GetOrgLevelRuleset(owner, singleRule.DatabaseID)
 			if err != nil {
-				zap.S().Error("Error raised in getting org level ruleset data for %s", singleRule.DatabaseID, zap.Error(err))
+				zap.S().Error("Error raised in getting org level ruleset data for %s", singleRule.DatabaseID)
 				continue
 			} else {
 				var orgLevelRuleset data.RepoRuleset
 				err = json.Unmarshal(orgLevelRulesetResponse, &orgLevelRuleset)
 				if err != nil {
-					zap.S().Error("Error raised with variable response", zap.Error(err))
+					zap.S().Error("Error raised with variable response")
 					continue
 				}
-
-				Actors := utils.ProcessActors(orgLevelRuleset.BypassActors)
+				Actors := g.ProcessActors(orgLevelRuleset.BypassActors, owner, orgID, singleRule.ID)
 				orgConditions := utils.ProcessConditions(orgLevelRuleset)
 				rulesMap := utils.ProcessRules(orgLevelRuleset.Rules)
 
@@ -225,7 +238,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				zap.S().Error("Error raised with variable response", zap.Error(err))
 				continue
 			}
-			Actors := utils.ProcessActors(repoLevelRuleset.BypassActors)
+			//NEED TO FIX THIS ID BEING REFERRED TO
+			Actors := g.ProcessActors(repoLevelRuleset.BypassActors, owner, orgID, singleRepoRule.Rule.ID)
 			repoRulesMap := utils.ProcessRules(repoLevelRuleset.Rules)
 
 			repoConditions := utils.ProcessConditions(repoLevelRuleset)
@@ -276,9 +290,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 				return err
 			}
 		}
+		fmt.Printf("Successfully listed repository level rulesets for %s\n", owner)
 	}
 
-	fmt.Printf("Successfully listed repository level rulesets for %s\n", owner)
+	fmt.Printf("Successfully listed all rulesets for %s\n", owner)
 	csvWriter.Flush()
 
 	return nil

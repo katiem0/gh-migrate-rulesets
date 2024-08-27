@@ -13,8 +13,6 @@ import (
 func CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
-
-	// Create a map for header indices
 	headerMap := make(map[string]int)
 	for i, header := range fileData[0] {
 		headerMap[header] = i
@@ -133,32 +131,6 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 	return rules
 }
 
-func SplitIgnoringBraces(s, delimiter string) []string {
-	var result []string
-	var currentSegment strings.Builder
-	inBraces := false
-
-	for i := 0; i < len(s); i++ {
-		char := s[i]
-
-		if char == '{' {
-			inBraces = true
-		} else if char == '}' {
-			inBraces = false
-		}
-
-		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
-			result = append(result, currentSegment.String())
-			currentSegment.Reset()
-			i += len(delimiter) - 1
-		} else {
-			currentSegment.WriteByte(char)
-		}
-	}
-	result = append(result, currentSegment.String())
-	return result
-}
-
 func CleanConditions(conditions *data.Conditions) *data.Conditions {
 	conditions.RefName.Include = CleanSlice(conditions.RefName.Include)
 	conditions.RefName.Exclude = CleanSlice(conditions.RefName.Exclude)
@@ -220,37 +192,19 @@ func ShouldRemoveProperty(propName *data.PropertyPatterns) bool {
 	return propName != nil && len(propName.Include) == 0 && len(propName.Exclude) == 0
 }
 
-func Contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
+func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
+	createRuleset := data.CreateRuleset{
+		Name:         ruleset.Name,
+		Target:       ruleset.Target,
+		Enforcement:  ruleset.Enforcement,
+		BypassActors: ruleset.BypassActors,
+		Conditions:   ruleset.Conditions,
+		Rules:        make([]data.CreateRules, len(ruleset.Rules)),
 	}
-	return false
-}
-
-func UpdateTag(field reflect.StructField, key, value string) reflect.StructField {
-	tag := field.Tag.Get(key)
-	if tag == "" {
-		field.Tag = reflect.StructTag(key + `:"` + value + `"`)
-	} else {
-		parts := strings.Split(tag, ",")
-		newParts := []string{}
-		for _, part := range parts {
-			if part != "omitempty" {
-				newParts = append(newParts, part)
-			}
-		}
-		field.Tag = reflect.StructTag(key + `:"` + strings.Join(newParts, ",") + `"`)
-	}
-	return field
-}
-
-func ProcessRulesets(rulesets []data.Rules) ([]data.CreateRules, error) {
-	createRules := make([]data.CreateRules, len(rulesets))
-	for i, rule := range rulesets {
+	zap.S().Debugf("Removing omitempty from fields if needed from ruleset: %s", ruleset.Name)
+	for i, rule := range ruleset.Rules {
 		if rule.Parameters == nil {
-			createRules[i].Type = rule.Type
+			createRuleset.Rules[i].Type = rule.Type
 			continue
 		} else {
 			v := reflect.ValueOf(rule.Parameters).Elem()
@@ -281,9 +235,9 @@ func ProcessRulesets(rulesets []data.Rules) ([]data.CreateRules, error) {
 					newStruct.Field(j).Set(fieldValue)
 				}
 			}
-			createRules[i].Type = rule.Type
-			createRules[i].Parameters = newStruct.Interface()
+			createRuleset.Rules[i].Type = rule.Type
+			createRuleset.Rules[i].Parameters = newStruct.Interface()
 		}
 	}
-	return createRules, nil
+	return createRuleset, nil
 }

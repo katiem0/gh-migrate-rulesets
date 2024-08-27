@@ -1,6 +1,7 @@
 package data
 
 type Rulesets struct {
+	ID         string `json:"id"`
 	DatabaseID int    `json:"databaseId"`
 	Name       string `json:"name"`
 }
@@ -152,4 +153,5 @@ type Workflows struct {
 type ErrorRulesets struct {
 	Source      string
 	RulesetName string
+	Error       string
 }

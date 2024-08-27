@@ -2,6 +2,9 @@
 
 A GitHub `gh` [CLI](https://cli.github.com/) extension to create a report containing repository rulesets for a single repository, list of repositories, and/or organization, as well as create repository rulesets from a file.
 
+> [!NOTE]
+> The authenticated user must be an organization owner and a GitHub Personal Access Token needs the `admin:read` scope at the organization level to use this CLI extension to it's fullest.
+
 ## Installation
 
 1. Install the `gh` CLI - see the [installation](https://github.com/cli/cli#installation) instructions.
