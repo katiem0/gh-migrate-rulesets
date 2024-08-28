@@ -287,7 +287,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter, s *utils
 
 	if len(errorRulesets) > 0 {
 		reportFileName := fmt.Sprintf("%s-ruleset-errors-%s.csv", owner, time.Now().Format("20060102150405"))
-		utils.WriteErrorRulesetsToCSV(errorRulesets, reportFileName)
+		err := utils.WriteErrorRulesetsToCSV(errorRulesets, reportFileName)
+		if err != nil {
+			zap.S().Errorf("Error writing error rulesets to csv file: %v", err)
+		}
 	}
 	if len(cmdFlags.fileName) > 0 {
 		zap.S().Infof("Completed list of rulesets from %s in org %s", cmdFlags.fileName, owner)
