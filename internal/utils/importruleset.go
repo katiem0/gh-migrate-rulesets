@@ -10,11 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-func CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
-
-	// Create a map for header indices
 	headerMap := make(map[string]int)
 	for i, header := range fileData[0] {
 		headerMap[header] = i
@@ -28,7 +26,7 @@ func CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRulese
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
 		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
-		repoRuleset.BypassActors = parseBypassActors(each[headerMap["BypassActors"]])
+		repoRuleset.BypassActors = g.parseBypassActors(owner, each[headerMap["BypassActors"]])
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
 		ruleHeaders := fileData[0][14:35]
 		ruleValues := each[14:35]
@@ -49,9 +47,10 @@ func determineSource(owner, sourceType, repoName string) string {
 	return ""
 }
 
-func parseBypassActors(bypassActorsStr string) []data.BypassActor {
+func (g *APIGetter) parseBypassActors(owner string, bypassActorsStr string) []data.BypassActor {
 	bypassActors := strings.Split(bypassActorsStr, "|")
 	actors := make([]data.BypassActor, 0, len(bypassActors))
+	var actorID *int
 
 	for _, actor := range bypassActors {
 		actorData := strings.Split(actor, ";")
@@ -59,18 +58,63 @@ func parseBypassActors(bypassActorsStr string) []data.BypassActor {
 			zap.S().Debug("No Bypass Actor data found")
 			continue
 		}
-		actorID, err := strconv.Atoi(actorData[0])
-		if err != nil {
-			zap.S().Errorf("Invalid actor ID: %s", actorData[0])
-			continue
+		if _, ok := data.RolesMap[actorData[0]]; !ok {
+			zap.S().Debugf("Gathering appropriate IDs for Bypass Actor: %s", actorData[2])
+			if actorData[1] == "RepositoryRole" {
+				zap.S().Debugf("Processing bypass actor custom repository role")
+				roleData, err := g.GetRepoCustomRoles(owner)
+				if err != nil || len(roleData.CustomRoles) == 0 {
+					zap.S().Infof("Failed to get custom role data for Role Name %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					for _, CustomRole := range roleData.CustomRoles {
+						if CustomRole.Name == actorData[2] {
+							actorID = &CustomRole.ID
+						} else {
+							idData, _ := strconv.Atoi(actorData[0])
+							actorID = &idData
+						}
+					}
+				}
+			} else if actorData[1] == "Integration" {
+				zap.S().Debugf("Processing bypass actor integration")
+				appIntegrationData, err := g.GetAnApp(actorData[2])
+				if err != nil {
+					zap.S().Infof("Failed to get integration app data for actor ID %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					actorID = &appIntegrationData.AppID
+				}
+			} else if actorData[1] == "Team" {
+				zap.S().Debugf("Processing bypass actor team")
+				teamData, err := g.GetTeamByName(owner, actorData[2])
+				if err != nil {
+					zap.S().Infof("Failed to get team data for team name %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					actorID = &teamData.ID
+				}
+			}
+		} else {
+			if actorData[1] == "DeployKey" {
+				actorID = nil
+			} else {
+				id, _ := strconv.Atoi(actorData[0])
+				actorID = &id
+			}
 		}
 		actors = append(actors, data.BypassActor{
 			ActorID:    actorID,
 			ActorType:  actorData[1],
-			BypassMode: actorData[2],
+			BypassMode: actorData[3],
 		})
 	}
-
 	return actors
 }
 
@@ -94,7 +138,7 @@ func parseConditions(conditions []string) *data.Conditions {
 }
 
 func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
-	patterns := splitIgnoringBraces(patternsStr, "|")
+	patterns := SplitIgnoringBraces(patternsStr, "|")
 	propertyPatterns := make([]data.PropertyPattern, 0, len(patterns))
 	for _, pattern := range patterns {
 		patternData := strings.Split(pattern, ";")
@@ -123,7 +167,7 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 			Type: header,
 		}
 		if ruleValues[i] != "" {
-			parameters := parseParameters(ruleValues[i])
+			parameters := ParseParameters(ruleValues[i])
 			rule.Parameters = MapToParameters(parameters, header)
 		} else {
 			zap.S().Debugf("%s does not contain Parameters", header)
@@ -131,74 +175,6 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 		rules = append(rules, rule)
 	}
 	return rules
-}
-
-func parseParameters(paramStr string) map[string]interface{} {
-	params := make(map[string]interface{})
-	if paramStr == "" {
-		return nil
-	} else {
-		paramPairs := splitIgnoringBraces(paramStr, "|")
-		for _, pair := range paramPairs {
-			kv := strings.Split(pair, ":")
-			if len(kv) != 2 {
-				continue
-			}
-			key := kv[0]
-			value := kv[1]
-
-			if strings.Contains(value, "{") {
-				subGroups := strings.Split(value, ";")
-
-				var subMap []map[string]string
-				for _, subGroup := range subGroups {
-					valueTrimmed := strings.Trim(subGroup, "{}")
-					pairGroups := strings.Split(valueTrimmed, "|")
-					subGroupMap := make(map[string]string)
-					for _, pairGroup := range pairGroups {
-						subKv := strings.Split(pairGroup, "=")
-						if len(subKv) == 2 {
-							subGroupMap[subKv[0]] = subKv[1]
-						}
-					}
-					subMap = append(subMap, subGroupMap)
-				}
-				params[key] = subMap
-			} else if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-				value = strings.Trim(value, "[]")
-				params[key] = strings.Split(value, " ")
-			} else {
-				params[key] = value
-			}
-		}
-		return params
-	}
-}
-
-func splitIgnoringBraces(s, delimiter string) []string {
-	var result []string
-	var currentSegment strings.Builder
-	inBraces := false
-
-	for i := 0; i < len(s); i++ {
-		char := s[i]
-
-		if char == '{' {
-			inBraces = true
-		} else if char == '}' {
-			inBraces = false
-		}
-
-		if !inBraces && strings.HasPrefix(s[i:], delimiter) {
-			result = append(result, currentSegment.String())
-			currentSegment.Reset()
-			i += len(delimiter) - 1
-		} else {
-			currentSegment.WriteByte(char)
-		}
-	}
-	result = append(result, currentSegment.String())
-	return result
 }
 
 func CleanConditions(conditions *data.Conditions) *data.Conditions {
@@ -262,28 +238,52 @@ func ShouldRemoveProperty(propName *data.PropertyPatterns) bool {
 	return propName != nil && len(propName.Include) == 0 && len(propName.Exclude) == 0
 }
 
-func Contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
+func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
+	createRuleset := data.CreateRuleset{
+		Name:         ruleset.Name,
+		Target:       ruleset.Target,
+		Enforcement:  ruleset.Enforcement,
+		BypassActors: ruleset.BypassActors,
+		Conditions:   ruleset.Conditions,
+		Rules:        make([]data.CreateRules, len(ruleset.Rules)),
 	}
-	return false
-}
+	zap.S().Debugf("Removing omitempty from fields if needed from ruleset: %s", ruleset.Name)
+	for i, rule := range ruleset.Rules {
+		if rule.Parameters == nil {
+			createRuleset.Rules[i].Type = rule.Type
+			continue
+		} else {
+			v := reflect.ValueOf(rule.Parameters).Elem()
+			t := v.Type()
 
-func UpdateTag(field reflect.StructField, key, value string) reflect.StructField {
-	tag := field.Tag.Get(key)
-	if tag == "" {
-		field.Tag = reflect.StructTag(key + `:"` + value + `"`)
-	} else {
-		parts := strings.Split(tag, ",")
-		newParts := []string{}
-		for _, part := range parts {
-			if part != "omitempty" {
-				newParts = append(newParts, part)
+			newFields := make([]reflect.StructField, v.NumField())
+			for j := 0; j < v.NumField(); j++ {
+				fieldType := t.Field(j)
+				fieldName := fieldType.Name
+
+				if fields, ok := data.NonOmitEmptyFields[rule.Type]; ok {
+					if Contains(fields, fieldName) {
+						fieldType = UpdateTag(fieldType, "json", fieldName)
+					}
+				}
+				newFields[j] = fieldType
 			}
+			newStructType := reflect.StructOf(newFields)
+			newStruct := reflect.New(newStructType).Elem()
+			for j := 0; j < v.NumField(); j++ {
+				fieldValue := v.Field(j)
+				if fieldValue.Kind() == reflect.Slice && fieldValue.Type().Elem().Kind() == reflect.String {
+					newStruct.Field(j).Set(reflect.MakeSlice(fieldValue.Type(), fieldValue.Len(), fieldValue.Cap()))
+					for k := 0; k < fieldValue.Len(); k++ {
+						newStruct.Field(j).Index(k).Set(fieldValue.Index(k))
+					}
+				} else {
+					newStruct.Field(j).Set(fieldValue)
+				}
+			}
+			createRuleset.Rules[i].Type = rule.Type
+			createRuleset.Rules[i].Parameters = newStruct.Interface()
 		}
-		field.Tag = reflect.StructTag(key + `:"` + strings.Join(newParts, ",") + `"`)
 	}
-	return field
+	return createRuleset, nil
 }

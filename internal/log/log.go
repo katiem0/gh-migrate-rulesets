@@ -13,11 +13,12 @@ func NewLogger(debug bool) (*zap.Logger, error) {
 	}
 
 	loggerConfig := zap.Config{
-		Level:            zap.NewAtomicLevelAt(level),
-		Encoding:         "console",
-		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
+		Level:             zap.NewAtomicLevelAt(level),
+		Encoding:          "console",
+		EncoderConfig:     zap.NewDevelopmentEncoderConfig(),
+		DisableStacktrace: true,
+		OutputPaths:       []string{"stderr"},
+		ErrorOutputPaths:  []string{"stderr"},
 	}
 
 	return loggerConfig.Build()

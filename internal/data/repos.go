@@ -1,5 +1,42 @@
 package data
 
+type AppInfo struct {
+	AppID   int    `json:"id"`
+	AppSlug string `json:"slug"`
+}
+
+type AppInstallation struct {
+	InstallationID int    `json:"id"`
+	AppID          int    `json:"app_id"`
+	AppSlug        string `json:"app_slug"`
+}
+
+type AppIntegrations struct {
+	TotalCount    int               `json:"total_count"`
+	Installations []AppInstallation `json:"installations"`
+}
+
+type CustomRepoRoles struct {
+	TotalCount  int          `json:"total_count"`
+	CustomRoles []CustomRole `json:"custom_roles"`
+}
+
+type CustomRole struct {
+	Name     string `json:"name"`
+	ID       int    `json:"id"`
+	BaseRole string `json:"base_role"`
+}
+
+type OrgIdQuery struct {
+	Organization struct {
+		DatabaseID int `json:"databaseId"`
+	} `graphql:"organization(login: $owner)"`
+}
+
+type OrgID struct {
+	DatabaseID int `json:"databaseId"`
+}
+
 type RepoInfo struct {
 	DatabaseId int    `json:"databaseId"`
 	Name       string `json:"name"`
@@ -21,4 +58,10 @@ type ReposQuery struct {
 
 type RepoSingleQuery struct {
 	Repository RepoInfo `graphql:"repository(owner: $owner, name: $name)"`
+}
+
+type TeamInfo struct {
+	Name string `json:"name"`
+	ID   int    `json:"id"`
+	Slug string `json:"slug"`
 }
