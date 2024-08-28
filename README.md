@@ -75,7 +75,7 @@ The output `csv` file contains the following information:
 <tr><td><code>RulesetName</code></td><td>Name of the ruleset.</td></tr>
 <tr><td><code>Target</code></td><td>Indicates the type of ruleset, can be `branch`, `tag`, or `push`.</td></tr>
 <tr><td><code>Enforcement</code></td><td>Enforcement level of the ruleset (e.g., `active`, `evaluate`, or `disabled`).</td></tr>
-<tr><td><code>BypassActors</code></td><td>Actors who can bypass the ruleset, specified in the format `ID;Role;Condition`.</td></tr>
+<tr><td><code>BypassActors</code></td><td>Actors who can bypass the ruleset, specified in the format `ID;Role;Name;Condition`.</td></tr>
 <tr><td><code>ConditionsRefNameInclude</code></td><td>Array of `ref` names to include in the ruleset conditions.</td></tr>
 <tr><td><code>ConditionsRefNameExclude</code></td><td>Array of `ref` names to exclude from the ruleset conditions.</td></tr>
 <tr><td><code>ConditionsRepoNameInclude</code></td><td>Array of repository names to include in the ruleset conditions.</td></tr>
@@ -111,12 +111,12 @@ The output `csv` file contains the following information:
    
 ### Create Repository Rulesets
 
-Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined in [`gh-migrate-rulesets list`](#list-repository-rulesets).
+Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined in [`gh-migrate-rulesets list`](#list-repository-rulesets), or specifying the `--source-org` and/or `--repos` to retrieve rulesets from. If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv` file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
 
 > [!NOTE]
-> If your rulesets include the following rules, ensure that the `csv` has been updated to point to the update information under your organization:
+> If your rulesets include the following rules, ensure that the `csv` has been updated to point to the updated information under your organization:
 >
-> - Bypass Actors: Update Actor ID for teams and users
+> - Bypass Actors: Update Actor ID for Teams, Roles, and Integrations
 > - Status Checks: Ensure Context name exists and update Integration ID
 > - Code Scanning: Ensure Tool name exists
 > - Workflows: Update Repository ID to point to the correct repo/workflow
@@ -124,15 +124,31 @@ Repository Rulesets can be created from a `csv` file using `--from-file` followi
 
 ```sh
 $ gh migrate-rulesets create -h                                                   
-Create repository rulesets at the repo and/or org level from a file.
+Create repository rulesets at the repo and/or org level from a file or list.
 
 Usage:
   migrate-rules create [flags] <organization>
 
 Flags:
-  -d, --debug              To debug logging
-  -f, --from-file string   Path and Name of CSV file to create repository rulesets from
-  -h, --help               help for create
-      --hostname string    GitHub Enterprise Server hostname (default "github.com")
-  -t, --token string       GitHub personal access token for organization to write to (default "gh auth token")
+  -d, --debug                    To debug logging
+  -f, --from-file string         Path and Name of CSV file to create rulesets from
+  -h, --help                     help for create
+      --hostname string          GitHub Enterprise Server hostname (default "github.com")
+  -R, --repos strings            List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)
+  -r, --ruleType string          List rulesets for a specific application or all: {all|repoOnly|orgOnly} (default "all")
+      --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
+  -s, --source-org string        Name of the Source Organization to copy rulesets from
+  -p, --source-pat string        GitHub personal access token for Source Organization (default "gh auth token")
+  -t, --token string             GitHub personal access token for organization to write to (default "gh auth token")
 ```
+
+If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to map the object based on name to the new ID under the target organization:
+
+- Bypass Actors
+  - Teams
+  - Custom Repository Roles
+  - Integrations
+- Status Checks
+  - Context
+- Required Workflow
+  - Repository

@@ -38,7 +38,7 @@ func NewCmdCreate() *cobra.Command {
 	createCmd := &cobra.Command{
 		Use:   "create [flags] <organization>",
 		Short: "Create repository rulesets",
-		Long:  "Create repository rulesets at the repo and/or org level from a file.",
+		Long:  "Create repository rulesets at the repo and/or org level from a file or list.",
 		Args:  cobra.MinimumNArgs(1),
 		PreRunE: func(createCmd *cobra.Command, args []string) error {
 			if len(cmdFlags.fileName) == 0 && len(cmdFlags.sourceOrg) == 0 {
@@ -73,12 +73,12 @@ func NewCmdCreate() *cobra.Command {
 
 	// Configure flags for command
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.token, "token", "t", "", `GitHub personal access token for organization to write to (default "gh auth token")`)
-	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceToken, "source-pat", "p", "", `GitHub personal access token for Source Organization (Required for --source-org)`)
-	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceOrg, "source-org", "s", "", `Name of the Source Organization to copy rulesets from (Requires --source-pat)`)
+	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceToken, "source-pat", "p", "", `GitHub personal access token for Source Organization (default "gh auth token")`)
+	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceOrg, "source-org", "s", "", `Name of the Source Organization to copy rulesets from`)
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "source-hostname", "", "github.com", "GitHub Enterprise Server hostname where rulesets are copied from")
 	createCmd.Flags().StringVarP(&cmdFlags.fileName, "from-file", "f", "", "Path and Name of CSV file to create rulesets from")
-	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for")
+	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
 	createCmd.PersistentFlags().BoolVarP(&cmdFlags.debug, "debug", "d", false, "To debug logging")
 
@@ -160,7 +160,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter, s *utils
 								errorValidation = err.Error()
 							}
 							errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: ruleset.Source, RulesetName: createRuleset.Name, Error: errorValidation})
-							zap.S().Infof("Error creating ruleset %s for %s: %s\n", ruleset.Source, createRuleset.Name, errorValidation)
+							zap.S().Infof("Error creating ruleset %s for %s: %s", ruleset.Source, createRuleset.Name, errorValidation)
 
 							continue
 						}
@@ -211,12 +211,14 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter, s *utils
 							errorValidation = err.Error()
 						}
 						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: sourceOrg, RulesetName: createRuleset.Name, Error: errorValidation})
-						zap.S().Infof("Error creating ruleset %s for %s: %s\n", sourceOrg, createRuleset.Name, errorValidation)
+						zap.S().Infof("Error creating ruleset %s for %s: %s", sourceOrg, createRuleset.Name, errorValidation)
 						continue
 					}
 				}
 			}
-		} else if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
+		}
+
+		if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
 			zap.S().Infof("Gathering repositories specified in org %s to list rulesets for", sourceOrg)
 			allRepos, err := g.GatherRepositories(sourceOrg, repos)
 			if err != nil {
@@ -282,14 +284,15 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter, s *utils
 	} else {
 		zap.S().Errorf("Error arose identifying rulesets")
 	}
+
 	if len(errorRulesets) > 0 {
 		reportFileName := fmt.Sprintf("%s-ruleset-errors-%s.csv", owner, time.Now().Format("20060102150405"))
 		utils.WriteErrorRulesetsToCSV(errorRulesets, reportFileName)
 	}
 	if len(cmdFlags.fileName) > 0 {
-		zap.S().Infof("Successfully completed list of rulesets from %s in org %s", cmdFlags.fileName, owner)
+		zap.S().Infof("Completed list of rulesets from %s in org %s", cmdFlags.fileName, owner)
 	} else {
-		zap.S().Infof("Successfully completed list of rulesets in org %s", owner)
+		zap.S().Infof("Completed list of rulesets in org %s", owner)
 	}
 	return nil
 }
