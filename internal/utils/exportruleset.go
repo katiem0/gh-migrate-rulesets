@@ -15,12 +15,16 @@ func (g *APIGetter) ProcessActors(actors []data.BypassActor, owner string, orgID
 	var actorStrings []string
 	var actorName string
 	for _, actor := range actors {
-		if _, ok := data.RolesMap[strconv.Itoa(actor.ActorID)]; ok {
-			actorName = data.RolesMap[strconv.Itoa(actor.ActorID)]
+		if actor.ActorID == nil {
+			defaultID := 0
+			actor.ActorID = &defaultID
+		}
+		if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; ok {
+			actorName = data.RolesMap[strconv.Itoa(*actor.ActorID)]
 		} else {
 			if actor.ActorType == "RepositoryRole" {
 				zap.S().Debugf("Processing bypass actor custom repository role")
-				roleData, err := g.GetCustomRoles(owner, actor.ActorID)
+				roleData, err := g.GetCustomRoles(owner, *actor.ActorID)
 				if err != nil {
 					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
 					continue
@@ -40,26 +44,26 @@ func (g *APIGetter) ProcessActors(actors []data.BypassActor, owner string, orgID
 					continue
 				}
 				for _, appIntegration := range appIntegrationData.Installations {
-					if appIntegration.AppID == actor.ActorID {
+					if appIntegration.AppID == *actor.ActorID {
 						actorName = appIntegration.AppSlug
 					}
 				}
 			} else if actor.ActorType == "Team" {
 				zap.S().Debugf("Processing bypass actor team")
-				teamData, err := g.GetTeamData(orgID, actor.ActorID)
+				teamData, err := g.GetTeamData(orgID, *actor.ActorID)
 				if err != nil {
 					zap.S().Errorf("Failed to get team data for actor ID %d: %v", actor.ActorID, err)
 					continue
 				}
 				actorName = teamData.Name
 			} else {
-				fmt.Printf("Invalid actor type: %s", actor.ActorType)
+				zap.S().Infof("Invalid actor type: %s", actor.ActorType)
 				actorName = ""
 			}
 		}
 
 		actorList := []string{
-			strconv.Itoa(actor.ActorID),
+			strconv.Itoa(*actor.ActorID),
 			actor.ActorType,
 			actorName,
 			actor.BypassMode,

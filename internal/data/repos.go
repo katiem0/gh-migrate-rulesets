@@ -1,5 +1,10 @@
 package data
 
+type AppInfo struct {
+	AppID   int    `json:"id"`
+	AppSlug string `json:"slug"`
+}
+
 type AppInstallation struct {
 	InstallationID int    `json:"id"`
 	AppID          int    `json:"app_id"`
@@ -9,6 +14,11 @@ type AppInstallation struct {
 type AppIntegrations struct {
 	TotalCount    int               `json:"total_count"`
 	Installations []AppInstallation `json:"installations"`
+}
+
+type CustomRepoRoles struct {
+	TotalCount  int          `json:"total_count"`
+	CustomRoles []CustomRole `json:"custom_roles"`
 }
 
 type CustomRole struct {

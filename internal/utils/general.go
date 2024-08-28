@@ -60,11 +60,12 @@ type Getter interface {
 	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
 	GetRepoRulesetsList(owner string, endCursor *string) (*data.RepoRulesetsQuery, error)
 	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
-	GetTeam(ownerID int, teamID int) ([]byte, error)
+	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
+	GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error)
 	CreateOrgLevelRuleset(owner string, data io.Reader)
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader)
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
-	FetchOrgRulesets(owner string) []data.Rulesets
+	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	GatherRepositories(owner string, repos []string) []data.RepoInfo
 	RepoExists(ownerRepo string) bool
 }
@@ -140,7 +141,7 @@ func (g *APIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]da
 
 	for _, repo := range repos {
 		var repoRulesCursor *string
-		zap.S().Infof("Checking for rulesets in repo %s", repo.Name)
+		zap.S().Debugf("Checking for rulesets in repo %s", repo.Name)
 		for {
 			repoRulesetsQuery, err := g.GetRepoRulesetsList(owner, repo.Name, repoRulesCursor)
 			if err != nil {
@@ -186,6 +187,25 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.Rep
 		}
 	}
 	return allRepos, nil
+}
+func (g *APIGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {
+	url := fmt.Sprintf("apps/%s", appSlug)
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var appInfo data.AppInfo
+	err = json.Unmarshal(responseData, &appInfo)
+	if err != nil {
+		return nil, err
+	}
+	return &appInfo, nil
 }
 
 func (g *APIGetter) GetAppInstallations(owner string) (*data.AppIntegrations, error) {
@@ -253,9 +273,45 @@ func (g *APIGetter) GetCustomRoles(owner string, roleID int) ([]byte, error) {
 
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return responseData, nil
+}
+func (g *APIGetter) GetRepoCustomRoles(owner string) (*data.CustomRepoRoles, error) {
+	var allCustomRoles data.CustomRepoRoles
+	url := fmt.Sprintf("orgs/%s/custom-repository-roles?per_page=100", owner)
+	for {
+		resp, err := g.restClient.Request("GET", url, nil)
+		if err != nil {
+			zap.S().Error("Error raised in getting repo custom roles", zap.Error(err))
+			return nil, err
+		}
+		defer resp.Body.Close()
+		responseData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			zap.S().Error("Error reading response body", zap.Error(err))
+			return nil, err
+		}
+		var tempCustomRoles data.CustomRepoRoles
+		err = json.Unmarshal(responseData, &tempCustomRoles)
+		if err != nil {
+			zap.S().Error("Error unmarshalling response data", zap.Error(err))
+			return nil, err
+		}
+		allCustomRoles.TotalCount = tempCustomRoles.TotalCount
+		allCustomRoles.CustomRoles = append(allCustomRoles.CustomRoles, tempCustomRoles.CustomRoles...)
+
+		linkHeader := resp.Header.Get("Link")
+		if linkHeader == "" {
+			break
+		}
+		nextURL := getNextPageURL(linkHeader)
+		if nextURL == "" {
+			break
+		}
+		url = nextURL
+	}
+	return &allCustomRoles, nil
 }
 
 func (g *APIGetter) GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error) {
@@ -300,16 +356,10 @@ func (g *APIGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, e
 func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
 	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
 
-	resp, err := g.restClient.Request("GET", url, nil)
-	if err != nil {
-		return nil, nil
-	}
+	resp, _ := g.restClient.Request("GET", url, nil)
 	defer resp.Body.Close()
 
-	responseData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil
-	}
+	responseData, _ := io.ReadAll(resp.Body)
 	return responseData, nil
 }
 
@@ -340,6 +390,21 @@ func (g *APIGetter) GetRepoRulesetsList(owner string, repo string, endCursor *st
 
 func (g *APIGetter) GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error) {
 	url := fmt.Sprintf("organizations/%s/team/%s", strconv.Itoa(ownerID), strconv.Itoa(teamID))
+
+	resp, _ := g.restClient.Request("GET", url, nil)
+	defer resp.Body.Close()
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var teamName data.TeamInfo
+	err = json.Unmarshal(responseData, &teamName)
+	return &teamName, err
+}
+
+func (g *APIGetter) GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error) {
+	url := fmt.Sprintf("orgs/%s/teams/%s", owner, teamSlug)
 
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {

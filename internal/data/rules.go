@@ -64,7 +64,7 @@ type RepoRulesetsQuery struct {
 }
 
 type BypassActor struct {
-	ActorID    int    `json:"actor_id"`
+	ActorID    *int   `json:"actor_id,omitempty"`
 	ActorType  string `json:"actor_type"`
 	BypassMode string `json:"bypass_mode"`
 }

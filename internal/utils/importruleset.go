@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
 	headerMap := make(map[string]int)
@@ -26,7 +26,7 @@ func CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRulese
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
 		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
-		repoRuleset.BypassActors = parseBypassActors(each[headerMap["BypassActors"]])
+		repoRuleset.BypassActors = g.parseBypassActors(owner, each[headerMap["BypassActors"]])
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
 		ruleHeaders := fileData[0][14:35]
 		ruleValues := each[14:35]
@@ -47,9 +47,10 @@ func determineSource(owner, sourceType, repoName string) string {
 	return ""
 }
 
-func parseBypassActors(bypassActorsStr string) []data.BypassActor {
+func (g *APIGetter) parseBypassActors(owner string, bypassActorsStr string) []data.BypassActor {
 	bypassActors := strings.Split(bypassActorsStr, "|")
 	actors := make([]data.BypassActor, 0, len(bypassActors))
+	var actorID *int
 
 	for _, actor := range bypassActors {
 		actorData := strings.Split(actor, ";")
@@ -57,18 +58,63 @@ func parseBypassActors(bypassActorsStr string) []data.BypassActor {
 			zap.S().Debug("No Bypass Actor data found")
 			continue
 		}
-		actorID, err := strconv.Atoi(actorData[0])
-		if err != nil {
-			zap.S().Errorf("Invalid actor ID: %s", actorData[0])
-			continue
+		if _, ok := data.RolesMap[actorData[0]]; !ok {
+			zap.S().Debugf("Gathering appropriate IDs for Bypass Actor: %s", actorData[2])
+			if actorData[1] == "RepositoryRole" {
+				zap.S().Debugf("Processing bypass actor custom repository role")
+				roleData, err := g.GetRepoCustomRoles(owner)
+				if err != nil || len(roleData.CustomRoles) == 0 {
+					zap.S().Infof("Failed to get custom role data for Role Name %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					for _, CustomRole := range roleData.CustomRoles {
+						if CustomRole.Name == actorData[2] {
+							actorID = &CustomRole.ID
+						} else {
+							idData, _ := strconv.Atoi(actorData[0])
+							actorID = &idData
+						}
+					}
+				}
+			} else if actorData[1] == "Integration" {
+				zap.S().Debugf("Processing bypass actor integration")
+				appIntegrationData, err := g.GetAnApp(actorData[2])
+				if err != nil {
+					zap.S().Infof("Failed to get integration app data for actor ID %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					actorID = &appIntegrationData.AppID
+				}
+			} else if actorData[1] == "Team" {
+				zap.S().Debugf("Processing bypass actor team")
+				teamData, err := g.GetTeamByName(owner, actorData[2])
+				if err != nil {
+					zap.S().Infof("Failed to get team data for team name %s", actorData[2])
+					id, _ := strconv.Atoi(actorData[0])
+					actorID = &id
+					continue
+				} else {
+					actorID = &teamData.ID
+				}
+			}
+		} else {
+			if actorData[1] == "DeployKey" {
+				actorID = nil
+			} else {
+				id, _ := strconv.Atoi(actorData[0])
+				actorID = &id
+			}
 		}
 		actors = append(actors, data.BypassActor{
 			ActorID:    actorID,
 			ActorType:  actorData[1],
-			BypassMode: actorData[2],
+			BypassMode: actorData[3],
 		})
 	}
-
 	return actors
 }
 
