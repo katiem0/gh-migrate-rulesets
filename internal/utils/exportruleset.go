@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) ProcessActors(actors []data.BypassActor, owner string, orgID int, ruleID string) []string {
+func (g *APIGetter) ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string {
 	zap.S().Debugf("Processing bypass actors")
 	var actorStrings []string
 	var actorName string
@@ -24,15 +23,9 @@ func (g *APIGetter) ProcessActors(actors []data.BypassActor, owner string, orgID
 		} else {
 			if actor.ActorType == "RepositoryRole" {
 				zap.S().Debugf("Processing bypass actor custom repository role")
-				roleData, err := g.GetCustomRoles(owner, *actor.ActorID)
+				roleName, err := g.GetCustomRoles(owner, *actor.ActorID)
 				if err != nil {
 					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
-					continue
-				}
-				var roleName data.CustomRole
-				err = json.Unmarshal(roleData, &roleName)
-				if err != nil {
-					zap.S().Errorf("Failed to unmarshal custom role data for actor ID %d: %v", actor.ActorID, err)
 					continue
 				}
 				actorName = roleName.Name
@@ -113,14 +106,14 @@ func ProcessProperties(properties []data.PropertyPattern) []string {
 	return propertyStrings
 }
 
-func ProcessRules(rules []data.Rules) map[string]string {
+func (g *APIGetter) ProcessRules(rules []data.Rules) map[string]string {
 	zap.S().Debugf("Processing rules")
 	rulesMap := make(map[string]string)
 	for _, rule := range rules {
 		if rule.Parameters == nil {
 			rulesMap[rule.Type] = "true"
 		} else {
-			parametersMap := ParametersToMap(*rule.Parameters, rule.Type)
+			parametersMap := g.ParametersToMap(*rule.Parameters, rule.Type)
 			var formattedParams []string
 			for key, value := range parametersMap {
 				formattedParams = append(formattedParams, fmt.Sprintf("%s:%v", key, value))

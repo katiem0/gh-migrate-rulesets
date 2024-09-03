@@ -55,6 +55,7 @@ type Getter interface {
 	GetAppInstallations(owner string) ([]byte, error)
 	GetCustomRoles(owner string, roleID int) ([]byte, error)
 	GetRepo(owner string, name string) ([]data.RepoSingleQuery, error)
+	GetRepoByID(repoID int) (*data.RepoInfo, error)
 	GetReposList(owner string, endCursor *string) ([]data.ReposQuery, error)
 	GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error)
 	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
@@ -68,6 +69,8 @@ type Getter interface {
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	GatherRepositories(owner string, repos []string) []data.RepoInfo
 	RepoExists(ownerRepo string) bool
+	ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s *APIGetter) data.RepoRuleset
 }
 
 type APIGetter struct {
@@ -262,7 +265,7 @@ func getNextPageURL(linkHeader string) string {
 	return ""
 }
 
-func (g *APIGetter) GetCustomRoles(owner string, roleID int) ([]byte, error) {
+func (g *APIGetter) GetCustomRoles(owner string, roleID int) (*data.CustomRole, error) {
 	url := fmt.Sprintf("orgs/%s/custom-repository-roles/%s", owner, strconv.Itoa(roleID))
 
 	resp, err := g.restClient.Request("GET", url, nil)
@@ -275,7 +278,9 @@ func (g *APIGetter) GetCustomRoles(owner string, roleID int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return responseData, nil
+	var roleName data.CustomRole
+	err = json.Unmarshal(responseData, &roleName)
+	return &roleName, err
 }
 func (g *APIGetter) GetRepoCustomRoles(owner string) (*data.CustomRepoRoles, error) {
 	var allCustomRoles data.CustomRepoRoles
@@ -361,6 +366,21 @@ func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int
 
 	responseData, _ := io.ReadAll(resp.Body)
 	return responseData, nil
+}
+
+func (g *APIGetter) GetRepoByID(repoID int) (*data.RepoInfo, error) {
+	url := fmt.Sprintf("repositories/%s", strconv.Itoa(repoID))
+
+	resp, _ := g.restClient.Request("GET", url, nil)
+	defer resp.Body.Close()
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var repoInfo data.RepoInfo
+	err = json.Unmarshal(responseData, &repoInfo)
+	return &repoInfo, err
 }
 
 func (g *APIGetter) GetReposList(owner string, endCursor *string) (*data.ReposQuery, error) {

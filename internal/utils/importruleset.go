@@ -26,11 +26,11 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
 		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
-		repoRuleset.BypassActors = g.parseBypassActors(owner, each[headerMap["BypassActors"]])
+		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]])
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
 		ruleHeaders := fileData[0][14:35]
 		ruleValues := each[14:35]
-		repoRuleset.Rules = parseRules(ruleHeaders, ruleValues)
+		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues)
 		repoRuleset.CreatedAt = each[headerMap["CreatedAt"]]
 		repoRuleset.UpdatedAt = each[headerMap["UpdatedAt"]]
 		importRepoRuleset = append(importRepoRuleset, repoRuleset)
@@ -47,79 +47,8 @@ func determineSource(owner, sourceType, repoName string) string {
 	return ""
 }
 
-func (g *APIGetter) parseBypassActors(owner string, bypassActorsStr string) []data.BypassActor {
-	bypassActors := strings.Split(bypassActorsStr, "|")
-	actors := make([]data.BypassActor, 0, len(bypassActors))
-	var actorID *int
-
-	for _, actor := range bypassActors {
-		actorData := strings.Split(actor, ";")
-		if len(actorData) < 2 {
-			zap.S().Debug("No Bypass Actor data found")
-			continue
-		}
-		if _, ok := data.RolesMap[actorData[0]]; !ok {
-			zap.S().Debugf("Gathering appropriate IDs for Bypass Actor: %s", actorData[2])
-			if actorData[1] == "RepositoryRole" {
-				zap.S().Debugf("Processing bypass actor custom repository role")
-				roleData, err := g.GetRepoCustomRoles(owner)
-				if err != nil || len(roleData.CustomRoles) == 0 {
-					zap.S().Infof("Failed to get custom role data for Role Name %s", actorData[2])
-					id, _ := strconv.Atoi(actorData[0])
-					actorID = &id
-					continue
-				} else {
-					for _, CustomRole := range roleData.CustomRoles {
-						if CustomRole.Name == actorData[2] {
-							actorID = &CustomRole.ID
-						} else {
-							idData, _ := strconv.Atoi(actorData[0])
-							actorID = &idData
-						}
-					}
-				}
-			} else if actorData[1] == "Integration" {
-				zap.S().Debugf("Processing bypass actor integration")
-				appIntegrationData, err := g.GetAnApp(actorData[2])
-				if err != nil {
-					zap.S().Infof("Failed to get integration app data for actor ID %s", actorData[2])
-					id, _ := strconv.Atoi(actorData[0])
-					actorID = &id
-					continue
-				} else {
-					actorID = &appIntegrationData.AppID
-				}
-			} else if actorData[1] == "Team" {
-				zap.S().Debugf("Processing bypass actor team")
-				teamData, err := g.GetTeamByName(owner, actorData[2])
-				if err != nil {
-					zap.S().Infof("Failed to get team data for team name %s", actorData[2])
-					id, _ := strconv.Atoi(actorData[0])
-					actorID = &id
-					continue
-				} else {
-					actorID = &teamData.ID
-				}
-			}
-		} else {
-			if actorData[1] == "DeployKey" {
-				actorID = nil
-			} else {
-				id, _ := strconv.Atoi(actorData[0])
-				actorID = &id
-			}
-		}
-		actors = append(actors, data.BypassActor{
-			ActorID:    actorID,
-			ActorType:  actorData[1],
-			BypassMode: actorData[3],
-		})
-	}
-	return actors
-}
-
 func parseConditions(conditions []string) *data.Conditions {
-	zap.S().Debugln("validating ruleset conditions")
+	zap.S().Debugln("Validating ruleset conditions")
 	return &data.Conditions{
 		RefName: &data.RefPatterns{
 			Include: strings.Split(conditions[0], ";"),
@@ -155,12 +84,12 @@ func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
 	return propertyPatterns
 }
 
-func parseRules(headerMap []string, ruleValues []string) []data.Rules {
+func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []string) []data.Rules {
 	rules := make([]data.Rules, 0, len(headerMap))
 
 	for i := 0; i < len(headerMap) && i < len(ruleValues); i++ {
 		if ruleValues[i] == "" {
-			continue // Skip rules with empty values
+			continue
 		}
 		header := data.HeaderMap[headerMap[i]]
 		rule := data.Rules{
@@ -168,7 +97,7 @@ func parseRules(headerMap []string, ruleValues []string) []data.Rules {
 		}
 		if ruleValues[i] != "" {
 			parameters := ParseParameters(ruleValues[i])
-			rule.Parameters = MapToParameters(parameters, header)
+			rule.Parameters = g.MapToParameters(owner, parameters, header)
 		} else {
 			zap.S().Debugf("%s does not contain Parameters", header)
 		}
@@ -260,7 +189,6 @@ func ProcessRulesets(ruleset data.RepoRuleset) (data.CreateRuleset, error) {
 			for j := 0; j < v.NumField(); j++ {
 				fieldType := t.Field(j)
 				fieldName := fieldType.Name
-
 				if fields, ok := data.NonOmitEmptyFields[rule.Type]; ok {
 					if Contains(fields, fieldName) {
 						fieldType = UpdateTag(fieldType, "json", fieldName)

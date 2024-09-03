@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func ParametersToMap(params data.Parameters, ruleType string) map[string]string {
+func (g *APIGetter) ParametersToMap(params data.Parameters, ruleType string) map[string]string {
 	result := make(map[string]string)
 	v := reflect.ValueOf(params)
 
@@ -34,7 +34,8 @@ func ParametersToMap(params data.Parameters, ruleType string) map[string]string 
 			var workflowStrings []string
 			for j := 0; j < field.Len(); j++ {
 				workflow := field.Index(j).Interface().(data.Workflows)
-				workflowString := fmt.Sprintf("{Path=%s|Ref=%s|RepositoryID=%d|SHA=%s}", workflow.Path, workflow.Ref, workflow.RepositoryID, workflow.SHA)
+				repoName, _ := g.GetRepoByID(workflow.RepositoryID)
+				workflowString := fmt.Sprintf("{Path=%s|Ref=%s|RepositoryID=%d|RepositoryName=%s|SHA=%s}", workflow.Path, workflow.Ref, workflow.RepositoryID, repoName.Name, workflow.SHA)
 				workflowStrings = append(workflowStrings, workflowString)
 			}
 			result[fieldName] = strings.Join(workflowStrings, ";")
@@ -155,7 +156,7 @@ func GetValidFields(ruleType string) map[string]map[string]struct{} {
 	return validFields[ruleType]
 }
 
-func MapToParameters(paramsMap map[string]interface{}, ruleType string) *data.Parameters {
+func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters {
 	var params data.Parameters
 	validFields := GetValidFields(ruleType)
 	if validFields == nil {
@@ -182,7 +183,7 @@ func MapToParameters(paramsMap map[string]interface{}, ruleType string) *data.Pa
 		switch field.Kind() {
 		case reflect.Slice:
 			if field.Type() == workflowsType {
-				parsedValue := parseWorkflows(value)
+				parsedValue := g.ParseRequiredWorkflowsForImport(owner, value)
 				if len(parsedValue) > 0 {
 					field.Set(reflect.ValueOf(parsedValue))
 				}
@@ -217,30 +218,6 @@ func MapToParameters(paramsMap map[string]interface{}, ruleType string) *data.Pa
 	return &params
 }
 
-func parseWorkflows(value interface{}) []data.Workflows {
-	var workflows []data.Workflows
-	v, ok := value.([]map[string]string)
-	if !ok {
-		zap.S().Error("Invalid type for value")
-		return workflows
-	}
-	for _, workflowMap := range v {
-		repositoryID, err := strconv.Atoi(workflowMap["RepositoryID"])
-		if err != nil {
-			zap.S().Errorf("Invalid RepositoryID:", workflowMap["RepositoryID"])
-			continue
-		}
-		workflow := data.Workflows{
-			Path:         workflowMap["Path"],
-			Ref:          workflowMap["Ref"],
-			RepositoryID: repositoryID,
-			SHA:          workflowMap["SHA"],
-		}
-		workflows = append(workflows, workflow)
-	}
-	return workflows
-}
-
 func parseStatusChecks(value interface{}) []data.StatusChecks {
 	var statusChecks []data.StatusChecks
 	v, ok := value.([]map[string]string)
@@ -254,9 +231,14 @@ func parseStatusChecks(value interface{}) []data.StatusChecks {
 			zap.S().Errorf("Invalid IntegrationID:", statusMap["IntegrationID"])
 			continue
 		}
+
+		var integrationIDPtr *int
+		if integrationID != 0 {
+			integrationIDPtr = &integrationID
+		}
 		statusCheck := data.StatusChecks{
 			Context:       statusMap["Context"],
-			IntegrationID: integrationID,
+			IntegrationID: integrationIDPtr,
 		}
 		statusChecks = append(statusChecks, statusCheck)
 	}
