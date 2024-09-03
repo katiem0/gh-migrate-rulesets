@@ -1,40 +1,15 @@
 package data
 
-type Rulesets struct {
-	ID         string `json:"id"`
-	DatabaseID int    `json:"databaseId"`
-	Name       string `json:"name"`
+type BypassActor struct {
+	ActorID    *int   `json:"actor_id,omitempty"`
+	ActorType  string `json:"actor_type"`
+	BypassMode string `json:"bypass_mode"`
 }
 
-type RepoNameRule struct {
-	RepoName string
-	Rule     Rulesets
-}
-
-type OrgRulesetsQuery struct {
-	Organization struct {
-		Rulesets struct {
-			Nodes    []Rulesets
-			PageInfo struct {
-				EndCursor   string
-				HasNextPage bool
-			}
-		} `graphql:"rulesets(first: 100, after: $endCursor, includeParents:false)"`
-	} `graphql:"organization(login: $owner)"`
-}
-
-type RepoRuleset struct {
-	ID           int           `json:"id"`
-	Name         string        `json:"name"`
-	Target       string        `json:"target"`
-	SourceType   string        `json:"source_type"`
-	Source       string        `json:"source"`
-	Enforcement  string        `json:"enforcement"`
-	BypassActors []BypassActor `json:"bypass_actors"`
-	Conditions   *Conditions   `json:"conditions"`
-	Rules        []Rules       `json:"rules"`
-	CreatedAt    string        `json:"created_at"`
-	UpdatedAt    string        `json:"updated_at"`
+type Conditions struct {
+	RefName            *RefPatterns      `json:"ref_name,omitempty"`
+	RepositoryName     *NamePatterns     `json:"repository_name,omitempty"`
+	RepositoryProperty *PropertyPatterns `json:"repository_property,omitempty"`
 }
 
 type CreateRuleset struct {
@@ -51,6 +26,43 @@ type CreateRules struct {
 	Parameters interface{} `json:"parameters,omitempty"`
 }
 
+type OrgRulesetsQuery struct {
+	Organization struct {
+		Rulesets struct {
+			Nodes    []Rulesets
+			PageInfo struct {
+				EndCursor   string
+				HasNextPage bool
+			}
+		} `graphql:"rulesets(first: 100, after: $endCursor, includeParents:false)"`
+	} `graphql:"organization(login: $owner)"`
+}
+
+type Rulesets struct {
+	ID         string `json:"id"`
+	DatabaseID int    `json:"databaseId"`
+	Name       string `json:"name"`
+}
+
+type RepoNameRule struct {
+	RepoName string
+	Rule     Rulesets
+}
+
+type RepoRuleset struct {
+	ID           int           `json:"id"`
+	Name         string        `json:"name"`
+	Target       string        `json:"target"`
+	SourceType   string        `json:"source_type"`
+	Source       string        `json:"source"`
+	Enforcement  string        `json:"enforcement"`
+	BypassActors []BypassActor `json:"bypass_actors"`
+	Conditions   *Conditions   `json:"conditions"`
+	Rules        []Rules       `json:"rules"`
+	CreatedAt    string        `json:"created_at"`
+	UpdatedAt    string        `json:"updated_at"`
+}
+
 type RepoRulesetsQuery struct {
 	Repository struct {
 		Rulesets struct {
@@ -61,18 +73,6 @@ type RepoRulesetsQuery struct {
 			}
 		} `graphql:"rulesets(first: 100, after: $endCursor, includeParents:false)"`
 	} `graphql:"repository(owner: $owner, name: $name)"`
-}
-
-type BypassActor struct {
-	ActorID    *int   `json:"actor_id,omitempty"`
-	ActorType  string `json:"actor_type"`
-	BypassMode string `json:"bypass_mode"`
-}
-
-type Conditions struct {
-	RefName            *RefPatterns      `json:"ref_name,omitempty"`
-	RepositoryName     *NamePatterns     `json:"repository_name,omitempty"`
-	RepositoryProperty *PropertyPatterns `json:"repository_property,omitempty"`
 }
 
 type Rules struct {
@@ -134,7 +134,7 @@ type Parameters struct {
 
 type StatusChecks struct {
 	Context       string `json:"context,omitempty"`
-	IntegrationID int    `json:"integration_id,omitempty"`
+	IntegrationID *int   `json:"integration_id,omitempty"`
 }
 
 type CodeScanning struct {

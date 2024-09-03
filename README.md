@@ -111,9 +111,9 @@ The output `csv` file contains the following information:
    
 ### Create Repository Rulesets
 
-Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined in [`gh-migrate-rulesets list`](#list-repository-rulesets), or specifying the `--source-org` and/or `--repos` to retrieve rulesets from. If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv` file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
+Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined in [`gh-migrate-rulesets list`](#list-repository-rulesets), or specifying the `--source-org` and/or `--repos` to retrieve rulesets from.
 
-> [!NOTE]
+> [!WARNING]
 > If your rulesets include the following rules, ensure that the `csv` has been updated to point to the updated information under your organization:
 >
 > - Bypass Actors: Update Actor ID for Teams, Roles, and Integrations
@@ -152,3 +152,7 @@ If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to
   - Context
 - Required Workflow
   - Repository
+
+
+> [!NOTE]
+> If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv` file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.

@@ -158,9 +158,9 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 						zap.S().Error("Error raised with variable response")
 						continue
 					}
-					Actors := g.ProcessActors(orgLevelRuleset.BypassActors, owner, orgID, singleRule.ID)
+					Actors := g.ProcessActorsForExport(orgLevelRuleset.BypassActors, owner, orgID, singleRule.ID)
 					orgConditions := utils.ProcessConditions(orgLevelRuleset)
-					rulesMap := utils.ProcessRules(orgLevelRuleset.Rules)
+					rulesMap := g.ProcessRules(orgLevelRuleset.Rules)
 
 					zap.S().Debugf("Writing output for org rule %s", singleRule.Name)
 
@@ -238,9 +238,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGe
 					zap.S().Error("Error raised with variable response", zap.Error(err))
 					continue
 				}
-				//NEED TO FIX THIS ID BEING REFERRED TO
-				Actors := g.ProcessActors(repoLevelRuleset.BypassActors, owner, orgID, singleRepoRule.Rule.ID)
-				repoRulesMap := utils.ProcessRules(repoLevelRuleset.Rules)
+				Actors := g.ProcessActorsForExport(repoLevelRuleset.BypassActors, owner, orgID, singleRepoRule.Rule.ID)
+				repoRulesMap := g.ProcessRules(repoLevelRuleset.Rules)
 
 				repoConditions := utils.ProcessConditions(repoLevelRuleset)
 
