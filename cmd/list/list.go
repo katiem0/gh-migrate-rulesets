@@ -29,7 +29,7 @@ type ListGetter interface {
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
-	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
+	GatherRepositories(owner string, repos []string) []data.RepoInfo
 	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
 	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
@@ -279,14 +279,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 		zap.S().Infof("Step 4/5: Processing repository-level rulesets for %s", owner)
 
 		zap.S().Debug("Gathering repository list")
-		allRepos, err := g.GatherRepositories(owner, repos)
-		if err != nil {
-			zap.S().Errorf("Failed to gather repositories for %s: %v", owner, err)
-			if cmdFlags.ruleType == "repoOnly" {
-				return fmt.Errorf("error gathering repositories (repoOnly mode): %w", err)
-			}
-			zap.S().Warn("Continuing without repository rulesets...")
-		} else {
+		allRepos := g.GatherRepositories(owner, repos)
+		if len(allRepos) > 0 {
 			zap.S().Infof("Found %d repositories to process", len(allRepos))
 
 			zap.S().Debug("Fetching repository rulesets")
@@ -392,6 +386,12 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 				zap.S().Infof("Completed repository-level rulesets: %d processed, %d skipped",
 					processedRepoRulesets, repoSkippedRulesets)
 			}
+		} else {
+			zap.S().Errorf("Failed to gather repositories for %s: %v", owner, err)
+			if cmdFlags.ruleType == "repoOnly" {
+				return fmt.Errorf("error gathering repositories (repoOnly mode): %w", err)
+			}
+			zap.S().Warn("Continuing without repository rulesets...")
 		}
 	} else {
 		zap.S().Info("Step 4/5: Skipping repository-level rulesets (ruleType filter)")

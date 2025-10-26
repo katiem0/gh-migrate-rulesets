@@ -93,11 +93,11 @@ func (m *MockAPIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) (
 	return m.RepoRulesets, nil
 }
 
-func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
 	if m.ShouldError {
-		return nil, errors.New("mock error gathering repositories")
+		return []data.RepoInfo{}
 	}
-	return m.Repos, nil
+	return m.Repos
 }
 
 func (m *MockAPIGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {

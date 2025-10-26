@@ -71,8 +71,8 @@ func (m *MockWorkflowGetter) FetchRepoRulesets(owner string, repos []data.RepoIn
 	return nil, nil
 }
 
-func (m *MockWorkflowGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
-	return nil, nil
+func (m *MockWorkflowGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
+	return nil
 }
 
 func (m *MockWorkflowGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {

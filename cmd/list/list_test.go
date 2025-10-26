@@ -39,11 +39,11 @@ func (m *MockAPIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) 
 	return m.OrgRulesets, nil
 }
 
-func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
 	if m.ShouldError {
-		return nil, errors.New("mock error gathering repositories")
+		return []data.RepoInfo{}
 	}
-	return m.Repos, nil
+	return m.Repos
 }
 
 func (m *MockAPIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error) {
@@ -317,7 +317,14 @@ func TestRunCmdList_WithAPIErrors(t *testing.T) {
 		{
 			name: "handles nil team data gracefully",
 			mockGetter: &MockAPIGetter{
-				OrgID: 12345,
+				OrgID:       12345,
+				OrgRulesets: []data.Rulesets{}, // Empty org rulesets
+				Repos: []data.RepoInfo{
+					{
+						DatabaseId: 789,
+						Name:       "test-repo",
+					},
+				},
 				RepoRulesets: []data.RepoNameRule{
 					{
 						RepoName: "test-repo",

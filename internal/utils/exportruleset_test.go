@@ -257,7 +257,7 @@ func TestProcessActorsForExport(t *testing.T) {
 		owner  string
 		orgID  int
 		ruleID string
-		want   int
+		want   int // Check number of actors processed
 	}{
 		{
 			name:   "empty actors",
@@ -298,7 +298,6 @@ func TestProcessActorsForExport(t *testing.T) {
 	}
 }
 
-// Helper function for creating int pointers
 func intPtr(i int) *int {
 	return &i
 }

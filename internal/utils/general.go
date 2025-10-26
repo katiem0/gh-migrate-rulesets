@@ -57,7 +57,7 @@ type Getter interface {
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
-	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
+	GatherRepositories(owner string, repos []string) []data.RepoInfo
 	GetAnApp(appSlug string) (*data.AppInfo, error)
 	GetAppInstallations(owner string) (*data.AppIntegrations, error)
 	GetCustomRoles(owner string, roleID int) (*data.CustomRole, error)
@@ -178,15 +178,16 @@ func (g *APIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]da
 	return allRepoRules, nil
 }
 
-func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+func (g *APIGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
 	var allRepos []data.RepoInfo
 	var reposCursor *string
 
 	if len(repos) > 0 {
+		// Fetch specific repositories by name
 		for _, repo := range repos {
 			repoQuery, err := g.GetRepo(owner, repo)
 			if err != nil {
-				zap.S().Error("Error raised in getting repo", repo, zap.Error(err))
+				zap.S().Warnf("Failed to fetch repository %s in %s: %v. Skipping.", repo, owner, err)
 				continue
 			}
 			allRepos = append(allRepos, repoQuery.Repository)
@@ -195,8 +196,8 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.Rep
 		for {
 			reposQuery, err := g.GetReposList(owner, reposCursor)
 			if err != nil {
-				zap.S().Error("Error raised in processing list of repos", zap.Error(err))
-				return nil, err
+				zap.S().Errorf("Error raised in processing list of repos for %s: %v. Returning repos gathered so far.", owner, err)
+				break
 			}
 			allRepos = append(allRepos, reposQuery.Organization.Repositories.Nodes...)
 			reposCursor = &reposQuery.Organization.Repositories.PageInfo.EndCursor
@@ -205,8 +206,11 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) ([]data.Rep
 			}
 		}
 	}
-	return allRepos, nil
+
+	zap.S().Infof("Successfully gathered %d repositories for %s", len(allRepos), owner)
+	return allRepos
 }
+
 func (g *APIGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {
 	url := fmt.Sprintf("apps/%s", appSlug)
 	resp, err := g.restClient.Request("GET", url, nil)
@@ -393,59 +397,45 @@ func (g *APIGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, e
 	return query, err
 }
 
-func (g *APIGetter) GetRepoByID(repoID int) (*data.RepoInfo, error) {
-	url := fmt.Sprintf("repositories/%s", strconv.Itoa(repoID))
-
-	resp, err := g.restClient.Request("GET", url, nil)
-	if err != nil {
-		zap.S().Errorf("Failed to fetch repo data for repo ID %d: %v", repoID, err)
-		return nil, err
-	}
-	defer func() {
-		if resp != nil && resp.Body != nil {
-			if err := resp.Body.Close(); err != nil {
-				zap.S().Errorf("Error closing response body: %v", err)
-			}
-		}
-	}()
-
-	responseData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		zap.S().Errorf("Failed to read response body for repo ID %d: %v", repoID, err)
-		return nil, err
-	}
-
-	var repoInfo data.RepoInfo
-	err = json.Unmarshal(responseData, &repoInfo)
-	if err != nil {
-		zap.S().Errorf("Failed to unmarshal repo data for repo ID %d: %v", repoID, err)
-		return nil, err
-	}
-	return &repoInfo, err
-}
-
 func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
 	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
 
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
-		zap.S().Errorf("Failed to fetch repo ruleset %d for %s/%s: %v", rulesetId, owner, repo, err)
 		return nil, err
 	}
 	defer func() {
-		if resp != nil && resp.Body != nil {
-			if err := resp.Body.Close(); err != nil {
-				zap.S().Errorf("Error closing response body: %v", err)
-			}
+		if err := resp.Body.Close(); err != nil {
+			zap.S().Errorf("Error closing response body: %v", err)
 		}
 	}()
-
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		zap.S().Errorf("Failed to read response body for ruleset %d: %v", rulesetId, err)
 		return nil, err
 	}
 	return responseData, nil
+}
+
+func (g *APIGetter) GetRepoByID(repoID int) (*data.RepoInfo, error) {
+	url := fmt.Sprintf("repositories/%s", strconv.Itoa(repoID))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			zap.S().Errorf("Error closing response body: %v", err)
+		}
+	}()
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var repoInfo data.RepoInfo
+	err = json.Unmarshal(responseData, &repoInfo)
+	return &repoInfo, err
 }
 
 func (g *APIGetter) GetReposList(owner string, endCursor *string) (*data.ReposQuery, error) {
