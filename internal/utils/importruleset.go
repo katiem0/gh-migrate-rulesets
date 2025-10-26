@@ -109,6 +109,10 @@ func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []st
 }
 
 func CleanConditions(conditions *data.Conditions) *data.Conditions {
+	if conditions == nil {
+		return nil
+	}
+
 	if conditions.RefName != nil {
 		conditions.RefName.Include = CleanSlice(conditions.RefName.Include)
 		conditions.RefName.Exclude = CleanSlice(conditions.RefName.Exclude)
@@ -152,11 +156,17 @@ func CleanConditions(conditions *data.Conditions) *data.Conditions {
 }
 
 func CleanSlice(slice []string) []string {
+	if slice == nil {
+		return nil
+	}
 	var cleaned []string
 	for _, item := range slice {
 		if item != "" {
 			cleaned = append(cleaned, item)
 		}
+	}
+	if cleaned == nil {
+		return []string{}
 	}
 	return cleaned
 }

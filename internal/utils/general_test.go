@@ -1,0 +1,81 @@
+package utils
+
+import (
+	"testing"
+)
+
+func TestGetAuthToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		token    string
+		hostname string
+		want     string
+	}{
+		{
+			name:     "provided token",
+			token:    "ghp_testtoken123",
+			hostname: "github.com",
+			want:     "ghp_testtoken123",
+		},
+		{
+			name:     "empty token",
+			token:    "",
+			hostname: "github.com",
+			want:     "", // Will get from auth.TokenForHost
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GetAuthToken(tt.token, tt.hostname)
+			if tt.token != "" && got != tt.want {
+				t.Errorf("GetAuthToken() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetNextPageURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		linkHeader string
+		want       string
+	}{
+		{
+			name:       "valid next link",
+			linkHeader: `<https://api.github.com/orgs/test/repos?page=2>; rel="next", <https://api.github.com/orgs/test/repos?page=5>; rel="last"`,
+			want:       "orgs/test/repos?page=2",
+		},
+		{
+			name:       "no next link",
+			linkHeader: `<https://api.github.com/orgs/test/repos?page=1>; rel="first", <https://api.github.com/orgs/test/repos?page=5>; rel="last"`,
+			want:       "",
+		},
+		{
+			name:       "empty link header",
+			linkHeader: "",
+			want:       "",
+		},
+		{
+			name:       "malformed link header",
+			linkHeader: "not a valid link header",
+			want:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getNextPageURL(tt.linkHeader)
+			if got != tt.want {
+				t.Errorf("getNextPageURL() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRepoExists(t *testing.T) {
+	// Skip this test as it requires a real REST client
+	// Testing RepoExists would require mocking the REST client,
+	// which is complex and already tested via integration tests
+	t.Skip("RepoExists requires a REST client mock - tested via integration/E2E tests")
+}

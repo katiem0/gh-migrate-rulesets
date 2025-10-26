@@ -85,7 +85,7 @@ func NewCmdCreate() *cobra.Command {
 	return createCmd
 }
 
-func runCmdCreate(owner string, cmdFlags *cmdFlags, g *utils.APIGetter, s *utils.APIGetter) error {
+func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Getter) error {
 	repos := cmdFlags.repos
 	var errorValidation string
 	var rulesetData [][]string

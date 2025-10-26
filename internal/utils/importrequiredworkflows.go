@@ -32,7 +32,7 @@ func (g *APIGetter) ParseRequiredWorkflowsForImport(owner string, value interfac
 	return workflows
 }
 
-func (g *APIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s *APIGetter) data.RepoRuleset {
+func (g *APIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
 	for i, rule := range ruleset.Rules {
 		if rule.Type == "workflows" {
 			for j, workflow := range rule.Parameters.Workflows {
