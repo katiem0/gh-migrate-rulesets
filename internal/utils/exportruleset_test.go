@@ -28,7 +28,7 @@ func TestProcessProperties(t *testing.T) {
 		{
 			name:       "empty properties",
 			properties: []data.PropertyPattern{},
-			want:       nil, // Changed from []string{} to nil
+			want:       nil,
 		},
 		{
 			name: "multiple properties",
@@ -127,8 +127,8 @@ func TestProcessConditions(t *testing.T) {
 				IncludeNames:    "",
 				ExcludeNames:    "",
 				BoolNames:       "",
-				PropertyInclude: nil, // Changed from []string{}
-				PropertyExclude: nil, // Changed from []string{}
+				PropertyInclude: nil,
+				PropertyExclude: nil,
 			},
 		},
 		{
@@ -149,8 +149,8 @@ func TestProcessConditions(t *testing.T) {
 				IncludeNames:    "",
 				ExcludeNames:    "",
 				BoolNames:       "",
-				PropertyInclude: nil, // Changed from []string{}
-				PropertyExclude: nil, // Changed from []string{}
+				PropertyInclude: nil,
+				PropertyExclude: nil,
 			},
 		},
 	}
@@ -185,7 +185,7 @@ func TestProcessRules(t *testing.T) {
 				},
 			},
 			want: map[string]string{
-				"pull_request": "", // Will contain all fields, just check it exists
+				"pull_request": "",
 			},
 		},
 		{
@@ -228,13 +228,11 @@ func TestProcessRules(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := g.ProcessRules(tt.rules)
 
-			// For the parameterized test, check that the key exists and contains expected values
 			if tt.name == "rules with parameters" {
 				value, exists := got["pull_request"]
 				if !exists {
 					t.Errorf("ProcessRules() missing key 'pull_request'")
 				}
-				// Check that it contains the expected parameter values
 				if !strings.Contains(value, "RequiredApprovingReviewCount:2") {
 					t.Errorf("ProcessRules() value doesn't contain RequiredApprovingReviewCount:2")
 				}
@@ -251,8 +249,6 @@ func TestProcessRules(t *testing.T) {
 }
 
 func TestProcessActorsForExport(t *testing.T) {
-	// This would need mock implementations for GetCustomRoles, GetAppInstallations, etc.
-	// Simplified test for basic functionality
 	g := &APIGetter{}
 
 	tests := []struct {
@@ -261,7 +257,7 @@ func TestProcessActorsForExport(t *testing.T) {
 		owner  string
 		orgID  int
 		ruleID string
-		want   int // Check number of actors processed
+		want   int
 	}{
 		{
 			name:   "empty actors",

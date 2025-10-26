@@ -13,8 +13,6 @@ import (
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 	"github.com/katiem0/gh-migrate-rulesets/internal/log"
 	"github.com/katiem0/gh-migrate-rulesets/internal/utils"
-
-	// Add this line
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -71,7 +69,6 @@ func NewCmdCreate() *cobra.Command {
 	}
 	ruleDefault := "all"
 
-	// Configure flags for command
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.token, "token", "t", "", `GitHub personal access token for organization to write to (default "gh auth token")`)
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceToken, "source-pat", "p", "", `GitHub personal access token for Source Organization (default "gh auth token")`)
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceOrg, "source-org", "s", "", `Name of the Source Organization to copy rulesets from`)

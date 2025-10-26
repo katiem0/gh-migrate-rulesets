@@ -10,14 +10,16 @@ import (
 )
 
 func (g *APIGetter) ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string {
-	zap.S().Debugf("Processing bypass actors")
+	zap.S().Debugf("Processing bypass actors for ruleset %s", ruleID)
 	var actorStrings []string
 	var actorName string
+
 	for _, actor := range actors {
 		if actor.ActorID == nil {
 			defaultID := 0
 			actor.ActorID = &defaultID
 		}
+
 		if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; ok {
 			actorName = data.RolesMap[strconv.Itoa(*actor.ActorID)]
 		} else {
@@ -25,33 +27,44 @@ func (g *APIGetter) ProcessActorsForExport(actors []data.BypassActor, owner stri
 				zap.S().Debugf("Processing bypass actor custom repository role")
 				roleName, err := g.GetCustomRoles(owner, *actor.ActorID)
 				if err != nil {
-					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
-					continue
+					zap.S().Warnf("Failed to get custom role data for actor ID %d: %v", *actor.ActorID, err)
+					actorName = fmt.Sprintf("UnknownRole-%d", *actor.ActorID)
+				} else {
+					actorName = roleName.Name
 				}
-				actorName = roleName.Name
 			} else if actor.ActorType == "Integration" {
 				zap.S().Debugf("Processing bypass actor integration")
 				appIntegrationData, err := g.GetAppInstallations(owner)
 				if err != nil {
-					zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", actor.ActorID, err)
-					continue
-				}
-				for _, appIntegration := range appIntegrationData.Installations {
-					if appIntegration.AppID == *actor.ActorID {
-						actorName = appIntegration.AppSlug
+					zap.S().Warnf("Failed to get integration app data for actor ID %d: %v", *actor.ActorID, err)
+					actorName = fmt.Sprintf("UnknownIntegration-%d", *actor.ActorID)
+				} else {
+					found := false
+					for _, appIntegration := range appIntegrationData.Installations {
+						if appIntegration.AppID == *actor.ActorID {
+							actorName = appIntegration.AppSlug
+							found = true
+							break
+						}
+					}
+					if !found {
+						actorName = fmt.Sprintf("UnknownIntegration-%d", *actor.ActorID)
 					}
 				}
 			} else if actor.ActorType == "Team" {
-				zap.S().Debugf("Processing bypass actor team")
+				zap.S().Debugf("Processing bypass actor team for org ID %d, team ID %d", orgID, *actor.ActorID)
 				teamData, err := g.GetTeamData(orgID, *actor.ActorID)
 				if err != nil {
-					zap.S().Errorf("Failed to get team data for actor ID %d: %v", actor.ActorID, err)
-					continue
+					zap.S().Warnf("Failed to get team data for actor ID %d in org %d: %v", *actor.ActorID, orgID, err)
+					actorName = fmt.Sprintf("UnknownTeam-%d", *actor.ActorID)
+				} else if teamData != nil {
+					actorName = teamData.Name
+				} else {
+					actorName = fmt.Sprintf("UnknownTeam-%d", *actor.ActorID)
 				}
-				actorName = teamData.Name
 			} else {
 				zap.S().Infof("Invalid actor type: %s", actor.ActorType)
-				actorName = ""
+				actorName = fmt.Sprintf("Unknown-%d", *actor.ActorID)
 			}
 		}
 
@@ -65,7 +78,6 @@ func (g *APIGetter) ProcessActorsForExport(actors []data.BypassActor, owner stri
 	}
 	return actorStrings
 }
-
 func ProcessConditions(ruleset data.RepoRuleset) data.ProcessedConditions {
 	var PropertyInclude, PropertyExclude []string
 	var includeNames, excludeNames, boolNames, includeRefNames, excludeRefNames string

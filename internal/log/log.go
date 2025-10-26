@@ -1,6 +1,8 @@
 package log
 
 import (
+	"fmt"
+
 	"go.uber.org/zap"
 )
 
@@ -22,4 +24,18 @@ func NewLogger(debug bool) (*zap.Logger, error) {
 	}
 
 	return loggerConfig.Build()
+}
+
+func LogAndWrapError(err error, context string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+
+	contextMsg := fmt.Sprintf(context, args...)
+	zap.S().Errorf("%s: %v", contextMsg, err)
+	return fmt.Errorf("%s: %w", contextMsg, err)
+}
+
+func LogWarning(context string, args ...interface{}) {
+	zap.S().Warnf(context, args...)
 }

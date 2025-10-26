@@ -7,7 +7,6 @@ import (
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 )
 
-// MockGetter implements the Getter interface for testing
 type MockParametersGetter struct{}
 
 func (m *MockParametersGetter) GetRepoByID(repoID int) (*data.RepoInfo, error) {
@@ -66,7 +65,6 @@ func TestGetValidFields(t *testing.T) {
 
 func TestParametersToMap(t *testing.T) {
 	g := &APIGetter{}
-	// We'll need to override GetRepoByID behavior - use a wrapper approach
 
 	tests := []struct {
 		name     string
@@ -107,7 +105,6 @@ func TestParametersToMap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// For workflows test, we need a properly mocked APIGetter
 			if tt.ruleType == "workflows" {
 				t.Skip("Skipping workflows test - requires full mock setup")
 			}
@@ -122,15 +119,12 @@ func TestParametersToMap(t *testing.T) {
 
 func TestParametersToMap_WithWorkflows(t *testing.T) {
 	t.Run("workflows parameters", func(t *testing.T) {
-		// Create a custom implementation that overrides GetRepoByID
 		customGetter := &struct {
 			*APIGetter
 		}{
 			APIGetter: &APIGetter{},
 		}
 
-		// We can't easily test this without mocking the REST client
-		// So we'll just verify the function doesn't panic with nil workflows
 		emptyParams := data.Parameters{
 			Workflows: []data.Workflows{},
 		}
@@ -140,7 +134,6 @@ func TestParametersToMap_WithWorkflows(t *testing.T) {
 			t.Errorf("ParametersToMap() returned nil, expected empty map")
 		}
 
-		// Skip the actual workflow test since it requires REST client mock
 		t.Log("Skipping full workflow test - would require REST client mock")
 	})
 }

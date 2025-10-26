@@ -216,12 +216,10 @@ func TestWriteErrorRulesetsToCSV(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				// Verify file was created
 				if _, err := os.Stat(fileName); os.IsNotExist(err) {
 					t.Errorf("WriteErrorRulesetsToCSV() did not create file")
 				}
 
-				// Read and verify content
 				content, err := os.ReadFile(fileName)
 				if err != nil {
 					t.Errorf("Failed to read created file: %v", err)

@@ -140,7 +140,6 @@ func (g *APIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
 	for {
 		orgRulesetsQuery, err := g.GetOrgRulesetsList(owner, orgRulesCursor)
 		if err != nil {
-			zap.S().Error("Error getting organization ruleset list", zap.Error(err))
 			return nil, err
 		}
 
@@ -394,36 +393,59 @@ func (g *APIGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, e
 	return query, err
 }
 
-func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
-	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
-
-	resp, _ := g.restClient.Request("GET", url, nil)
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			zap.S().Errorf("Error closing response body: %v", err)
-		}
-	}()
-	responseData, _ := io.ReadAll(resp.Body)
-	return responseData, nil
-}
-
 func (g *APIGetter) GetRepoByID(repoID int) (*data.RepoInfo, error) {
 	url := fmt.Sprintf("repositories/%s", strconv.Itoa(repoID))
 
-	resp, _ := g.restClient.Request("GET", url, nil)
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		zap.S().Errorf("Failed to fetch repo data for repo ID %d: %v", repoID, err)
+		return nil, err
+	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			zap.S().Errorf("Error closing response body: %v", err)
+		if resp != nil && resp.Body != nil {
+			if err := resp.Body.Close(); err != nil {
+				zap.S().Errorf("Error closing response body: %v", err)
+			}
 		}
 	}()
+
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
+		zap.S().Errorf("Failed to read response body for repo ID %d: %v", repoID, err)
 		return nil, err
 	}
 
 	var repoInfo data.RepoInfo
 	err = json.Unmarshal(responseData, &repoInfo)
+	if err != nil {
+		zap.S().Errorf("Failed to unmarshal repo data for repo ID %d: %v", repoID, err)
+		return nil, err
+	}
 	return &repoInfo, err
+}
+
+func (g *APIGetter) GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error) {
+	url := fmt.Sprintf("repos/%s/%s/rulesets/%s", owner, repo, strconv.Itoa(rulesetId))
+
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		zap.S().Errorf("Failed to fetch repo ruleset %d for %s/%s: %v", rulesetId, owner, repo, err)
+		return nil, err
+	}
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			if err := resp.Body.Close(); err != nil {
+				zap.S().Errorf("Error closing response body: %v", err)
+			}
+		}
+	}()
+
+	responseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		zap.S().Errorf("Failed to read response body for ruleset %d: %v", rulesetId, err)
+		return nil, err
+	}
+	return responseData, nil
 }
 
 func (g *APIGetter) GetReposList(owner string, endCursor *string) (*data.ReposQuery, error) {
@@ -454,20 +476,32 @@ func (g *APIGetter) GetRepoRulesetsList(owner string, repo string, endCursor *st
 func (g *APIGetter) GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error) {
 	url := fmt.Sprintf("organizations/%s/team/%s", strconv.Itoa(ownerID), strconv.Itoa(teamID))
 
-	resp, _ := g.restClient.Request("GET", url, nil)
+	resp, err := g.restClient.Request("GET", url, nil)
+	if err != nil {
+		zap.S().Errorf("Failed to fetch team data for team ID %d in org %d: %v", teamID, ownerID, err)
+		return nil, err
+	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			zap.S().Errorf("Error closing response body: %v", err)
+		if resp != nil && resp.Body != nil {
+			if err := resp.Body.Close(); err != nil {
+				zap.S().Errorf("Error closing response body: %v", err)
+			}
 		}
 	}()
+
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
+		zap.S().Errorf("Failed to read response body for team ID %d: %v", teamID, err)
 		return nil, err
 	}
 
-	var teamName data.TeamInfo
-	err = json.Unmarshal(responseData, &teamName)
-	return &teamName, err
+	var teamInfo data.TeamInfo
+	err = json.Unmarshal(responseData, &teamInfo)
+	if err != nil {
+		zap.S().Errorf("Failed to unmarshal team data for team ID %d: %v", teamID, err)
+		return nil, err
+	}
+	return &teamInfo, nil
 }
 
 func (g *APIGetter) GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error) {

@@ -55,7 +55,7 @@ func (g *APIGetter) ParametersToMap(params data.Parameters, ruleType string) map
 				statusCheckStrings = append(statusCheckStrings, statusCheckString)
 			}
 			result[fieldName] = strings.Join(statusCheckStrings, ";")
-		case reflect.TypeOf(true): // Check for boolean type
+		case reflect.TypeOf(true):
 			result[fieldName] = fmt.Sprintf("%v", field.Bool())
 		default:
 			result[fieldName] = fmt.Sprintf("%v", field.Interface())
@@ -64,7 +64,6 @@ func (g *APIGetter) ParametersToMap(params data.Parameters, ruleType string) map
 	return result
 }
 
-// getValidFields returns the valid fields for a given rule type.
 func GetValidFields(ruleType string) map[string]map[string]struct{} {
 	validFields := map[string]map[string]map[string]struct{}{
 		"merge_queue": {
