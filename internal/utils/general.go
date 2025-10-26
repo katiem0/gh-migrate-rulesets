@@ -51,25 +51,35 @@ func GetAuthToken(token, hostname string) string {
 }
 
 type Getter interface {
-	GetAppInstallations(owner string) ([]byte, error)
-	GetCustomRoles(owner string, roleID int) ([]byte, error)
-	GetRepo(owner string, name string) ([]data.RepoSingleQuery, error)
-	GetRepoByID(repoID int) (*data.RepoInfo, error)
-	GetReposList(owner string, endCursor *string) ([]data.ReposQuery, error)
-	GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error)
-	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
-	GetRepoRulesetsList(owner string, endCursor *string) (*data.RepoRulesetsQuery, error)
-	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
-	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
-	GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error)
-	CreateOrgLevelRuleset(owner string, data io.Reader)
-	CreateRepoLevelRuleset(ownerRepo string, data io.Reader)
+	CreateOrgLevelRuleset(owner string, data io.Reader) error
+	CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error
+	CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
-	GatherRepositories(owner string, repos []string) []data.RepoInfo
-	RepoExists(ownerRepo string) bool
+	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
+	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
+	GetAnApp(appSlug string) (*data.AppInfo, error)
+	GetAppInstallations(owner string) (*data.AppIntegrations, error)
+	GetCustomRoles(owner string, roleID int) (*data.CustomRole, error)
+	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
+	GetOrgRulesetsList(owner string, endCursor *string) (*data.OrgRulesetsQuery, error)
+	GetRepo(owner string, name string) (*data.RepoSingleQuery, error)
+	GetRepoByID(repoID int) (*data.RepoInfo, error)
+	GetRepoCustomRoles(owner string) (*data.CustomRepoRoles, error)
+	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
+	GetRepoRulesetsList(owner string, repo string, endCursor *string) (*data.RepoRulesetsQuery, error)
+	GetReposList(owner string, endCursor *string) (*data.ReposQuery, error)
+	GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error)
+	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
+	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters
+	ParametersToMap(params data.Parameters, ruleType string) map[string]string
 	ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor
-	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s *APIGetter) data.RepoRuleset
+	ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows
+	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
+	ProcessRules(rules []data.Rules) map[string]string
+	RepoExists(ownerRepo string) bool
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
 
 type APIGetter struct {

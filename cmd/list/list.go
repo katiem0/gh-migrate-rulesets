@@ -26,6 +26,18 @@ type cmdFlags struct {
 	debug    bool
 }
 
+// Create an interface for list operations
+type ListGetter interface {
+	FetchOrgId(owner string) (*data.OrgIdQuery, error)
+	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
+	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
+	GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error)
+	GetOrgLevelRuleset(owner string, rulesetId int) ([]byte, error)
+	GetRepoLevelRuleset(owner string, repo string, rulesetId int) ([]byte, error)
+	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
+	ProcessRules(rules []data.Rules) map[string]string
+}
+
 func NewCmdList() *cobra.Command {
 	cmdFlags := cmdFlags{}
 	var authToken string
@@ -74,6 +86,7 @@ func NewCmdList() *cobra.Command {
 	reportFileDefault := fmt.Sprintf("ruleset-%s.csv", time.Now().Format("20060102150405"))
 	ruleDefault := "all"
 
+	// Configure flags for command
 	listCmd.PersistentFlags().StringVarP(&cmdFlags.token, "token", "t", "", `GitHub Personal Access Token (default "gh auth token")`)
 	listCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
 	listCmd.Flags().StringVarP(&cmdFlags.listFile, "output-file", "o", reportFileDefault, "Name of file to write CSV list to")
@@ -82,7 +95,7 @@ func NewCmdList() *cobra.Command {
 	return listCmd
 }
 
-func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g *utils.APIGetter, reportWriter io.Writer) error {
+func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, reportWriter io.Writer) error {
 	zap.S().Infof("Gathering repositories and/or rulesets for %s", owner)
 	var orgID int
 

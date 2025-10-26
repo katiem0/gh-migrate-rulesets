@@ -79,7 +79,7 @@ func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr str
 	return actors
 }
 
-func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s *APIGetter) data.RepoRuleset {
+func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
 	zap.S().Debugf("Updating Bypass Actor ID for new org %s", owner)
 
 	for i, actor := range ruleset.BypassActors {
