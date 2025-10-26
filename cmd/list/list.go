@@ -387,9 +387,9 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 					processedRepoRulesets, repoSkippedRulesets)
 			}
 		} else {
-			zap.S().Errorf("Failed to gather repositories for %s", owner)
+			zap.S().Errorf("No repositories found to gather for %s", owner)
 			if cmdFlags.ruleType == "repoOnly" {
-				return fmt.Errorf("error gathering repositories (repoOnly mode)")
+				return fmt.Errorf("no repositories found (repoOnly mode)")
 			}
 			zap.S().Warn("Continuing without repository rulesets...")
 		}
