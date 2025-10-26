@@ -12,17 +12,16 @@ import (
 	"go.uber.org/zap"
 )
 
-func RecoverFromPanic(context string) {
-	if r := recover(); r != nil {
-		zap.S().Errorf("Panic recovered in %s: %v\nStack trace:\n%s",
-			context, r, string(debug.Stack()))
-	}
-}
-
 func SafeExecute(fn func() error, context string) error {
 	var err error
 	func() {
-		defer RecoverFromPanic(context)
+		defer func() {
+			if r := recover(); r != nil {
+				zap.S().Errorf("Panic recovered in %s: %v\nStack trace:\n%s",
+					context, r, string(debug.Stack()))
+				err = fmt.Errorf("panic in %s: %v", context, r)
+			}
+		}()
 		err = fn()
 	}()
 	return err

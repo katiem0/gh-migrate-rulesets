@@ -187,7 +187,7 @@ func (g *APIGetter) GatherRepositories(owner string, repos []string) []data.Repo
 		for _, repo := range repos {
 			repoQuery, err := g.GetRepo(owner, repo)
 			if err != nil {
-				zap.S().Warnf("Failed to fetch repository %s in %s: %v. Skipping.", repo, owner, err)
+				zap.S().Warnf("Failed to fetch repository %s in %s: %+v. Skipping.", repo, owner, err)
 				continue
 			}
 			allRepos = append(allRepos, repoQuery.Repository)
