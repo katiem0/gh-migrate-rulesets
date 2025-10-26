@@ -36,6 +36,8 @@ func LogAndWrapError(err error, context string, args ...interface{}) error {
 	return fmt.Errorf("%s: %w", contextMsg, err)
 }
 
+// LogWarning logs a warning message using the global zap logger.
+// The context parameter is a format string, and args are the values to format into the message.
 func LogWarning(context string, args ...interface{}) {
 	zap.S().Warnf(context, args...)
 }
