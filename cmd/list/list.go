@@ -104,7 +104,7 @@ func NewCmdList() *cobra.Command {
 }
 
 func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, outputFileName string) error {
-	zap.S().Infof("=== Starting ruleset listing for organization: %s ===", owner)
+	zap.S().Infof(" Starting ruleset listing for organization: %s", owner)
 	zap.S().Debugf("Rule type filter: %s", cmdFlags.ruleType)
 
 	var orgID int
@@ -177,10 +177,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 		allOrgRules, err := g.FetchOrgRulesets(owner)
 		if err != nil {
 			zap.S().Errorf("Failed to fetch organization rulesets for %s: %v", owner, err)
-			zap.S().Warn("Continuing with repository-level rulesets...")
 			if cmdFlags.ruleType == "orgOnly" {
 				return fmt.Errorf("error fetching organization rulesets (orgOnly mode): %w", err)
 			}
+			zap.S().Warn("Continuing with repository-level rulesets...")
 		} else {
 			zap.S().Infof("Found %d organization-level rulesets to process", len(allOrgRules))
 
@@ -188,79 +188,79 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 				zap.S().Infof("[%d/%d] Processing org ruleset: %s (ID: %s, Database ID: %d)",
 					idx+1, len(allOrgRules), singleRule.Name, singleRule.ID, singleRule.DatabaseID)
 
-				zap.S().Debugf("Fetching detailed ruleset data for org ruleset ID: %d", singleRule.DatabaseID)
+				err := utils.SafeExecute(func() error {
+					zap.S().Debugf("Fetching detailed ruleset data for org ruleset ID: %d", singleRule.DatabaseID)
 
-				orgLevelRulesetResponse, err := g.GetOrgLevelRuleset(owner, singleRule.DatabaseID)
+					orgLevelRulesetResponse, err := g.GetOrgLevelRuleset(owner, singleRule.DatabaseID)
+					if err != nil {
+						return fmt.Errorf("failed to get org level ruleset: %w", err)
+					}
+
+					zap.S().Debugf("Unmarshaling org ruleset response for: %s", singleRule.Name)
+					var orgLevelRuleset data.RepoRuleset
+					if err = json.Unmarshal(orgLevelRulesetResponse, &orgLevelRuleset); err != nil {
+						return fmt.Errorf("failed to unmarshal org ruleset: %w", err)
+					}
+
+					zap.S().Debugf("Processing bypass actors for org ruleset: %s (count: %d)",
+						singleRule.Name, len(orgLevelRuleset.BypassActors))
+					Actors := g.ProcessActorsForExport(orgLevelRuleset.BypassActors, owner, orgID, singleRule.ID)
+					zap.S().Debugf("Processed %d bypass actors", len(Actors))
+
+					zap.S().Debugf("Processing conditions for org ruleset: %s", singleRule.Name)
+					orgConditions := utils.ProcessConditions(orgLevelRuleset)
+
+					zap.S().Debugf("Processing rules for org ruleset: %s (count: %d)",
+						singleRule.Name, len(orgLevelRuleset.Rules))
+					rulesMap := g.ProcessRules(orgLevelRuleset.Rules)
+					zap.S().Debugf("Processed %d rule types", len(rulesMap))
+
+					zap.S().Debugf("Writing CSV row for org ruleset: %s", singleRule.Name)
+					return csvWriter.Write([]string{
+						orgLevelRuleset.SourceType,
+						"N/A",
+						strconv.Itoa(orgLevelRuleset.ID),
+						orgLevelRuleset.Name,
+						orgLevelRuleset.Target,
+						orgLevelRuleset.Enforcement,
+						strings.Join(Actors, "|"),
+						orgConditions.IncludeRefNames,
+						orgConditions.ExcludeRefNames,
+						orgConditions.IncludeNames,
+						orgConditions.ExcludeNames,
+						orgConditions.BoolNames,
+						strings.Join(orgConditions.PropertyInclude, "|"),
+						strings.Join(orgConditions.PropertyExclude, "|"),
+						rulesMap["creation"],
+						rulesMap["update"],
+						rulesMap["deletion"],
+						rulesMap["required_linear_history"],
+						rulesMap["merge_queue"],
+						rulesMap["required_deployments"],
+						rulesMap["required_signatures"],
+						rulesMap["pull_request"],
+						rulesMap["required_status_checks"],
+						rulesMap["non_fast_forward"],
+						rulesMap["commit_message_pattern"],
+						rulesMap["commit_author_email_pattern"],
+						rulesMap["committer_email_pattern"],
+						rulesMap["branch_name_pattern"],
+						rulesMap["tag_name_pattern"],
+						rulesMap["file_path_restriction"],
+						rulesMap["max_file_path_length"],
+						rulesMap["file_extension_restriction"],
+						rulesMap["max_file_size"],
+						rulesMap["workflows"],
+						rulesMap["code_scanning"],
+						orgLevelRuleset.CreatedAt,
+						orgLevelRuleset.UpdatedAt,
+					})
+				}, fmt.Sprintf("processing org ruleset %s", singleRule.Name))
+
 				if err != nil {
-					zap.S().Errorf("Failed to get org level ruleset data for %s (ID: %d): %v",
-						singleRule.Name, singleRule.DatabaseID, err)
+					zap.S().Warnf("Skipping org ruleset %s due to error: %v", singleRule.Name, err)
 					skippedRulesets++
 					continue
-				}
-
-				zap.S().Debugf("Unmarshaling org ruleset response for: %s", singleRule.Name)
-				var orgLevelRuleset data.RepoRuleset
-				if err = json.Unmarshal(orgLevelRulesetResponse, &orgLevelRuleset); err != nil {
-					zap.S().Errorf("Failed to unmarshal org ruleset response for %s: %v", singleRule.Name, err)
-					skippedRulesets++
-					continue
-				}
-
-				zap.S().Debugf("Processing bypass actors for org ruleset: %s (count: %d)",
-					singleRule.Name, len(orgLevelRuleset.BypassActors))
-				Actors := g.ProcessActorsForExport(orgLevelRuleset.BypassActors, owner, orgID, singleRule.ID)
-				zap.S().Debugf("Processed %d bypass actors", len(Actors))
-
-				zap.S().Debugf("Processing conditions for org ruleset: %s", singleRule.Name)
-				orgConditions := utils.ProcessConditions(orgLevelRuleset)
-
-				zap.S().Debugf("Processing rules for org ruleset: %s (count: %d)",
-					singleRule.Name, len(orgLevelRuleset.Rules))
-				rulesMap := g.ProcessRules(orgLevelRuleset.Rules)
-				zap.S().Debugf("Processed %d rule types", len(rulesMap))
-
-				zap.S().Debugf("Writing CSV row for org ruleset: %s", singleRule.Name)
-				if err = csvWriter.Write([]string{
-					orgLevelRuleset.SourceType,
-					"N/A",
-					strconv.Itoa(orgLevelRuleset.ID),
-					orgLevelRuleset.Name,
-					orgLevelRuleset.Target,
-					orgLevelRuleset.Enforcement,
-					strings.Join(Actors, "|"),
-					orgConditions.IncludeRefNames,
-					orgConditions.ExcludeRefNames,
-					orgConditions.IncludeNames,
-					orgConditions.ExcludeNames,
-					orgConditions.BoolNames,
-					strings.Join(orgConditions.PropertyInclude, "|"),
-					strings.Join(orgConditions.PropertyExclude, "|"),
-					rulesMap["creation"],
-					rulesMap["update"],
-					rulesMap["deletion"],
-					rulesMap["required_linear_history"],
-					rulesMap["merge_queue"],
-					rulesMap["required_deployments"],
-					rulesMap["required_signatures"],
-					rulesMap["pull_request"],
-					rulesMap["required_status_checks"],
-					rulesMap["non_fast_forward"],
-					rulesMap["commit_message_pattern"],
-					rulesMap["commit_author_email_pattern"],
-					rulesMap["committer_email_pattern"],
-					rulesMap["branch_name_pattern"],
-					rulesMap["tag_name_pattern"],
-					rulesMap["file_path_restriction"],
-					rulesMap["max_file_path_length"],
-					rulesMap["file_extension_restriction"],
-					rulesMap["max_file_size"],
-					rulesMap["workflows"],
-					rulesMap["code_scanning"],
-					orgLevelRuleset.CreatedAt,
-					orgLevelRuleset.UpdatedAt,
-				}); err != nil {
-					zap.S().Errorf("Failed to write CSV row for org ruleset %s: %v", singleRule.Name, err)
-					return fmt.Errorf("error writing CSV output: %w", err)
 				}
 
 				processedOrgRulesets++
@@ -273,7 +273,6 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 	} else {
 		zap.S().Info("Step 3/5: Skipping organization-level rulesets (ruleType filter)")
 	}
-
 	repoSkippedRulesets := 0
 	if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
 		zap.S().Infof("Step 4/5: Processing repository-level rulesets for %s", owner)
@@ -387,7 +386,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 					processedRepoRulesets, repoSkippedRulesets)
 			}
 		} else {
-			zap.S().Errorf("No repositories found to gather for %s", owner)
+			zap.S().Warnf("No repositories found to gather for %s", owner)
 			if cmdFlags.ruleType == "repoOnly" {
 				return fmt.Errorf("no repositories found (repoOnly mode)")
 			}
