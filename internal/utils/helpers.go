@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime/debug"
 	"strings"
 
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
@@ -89,4 +90,20 @@ func WriteErrorRulesetsToCSV(errorRulesets []data.ErrorRulesets, fileName string
 		}
 	}
 	return nil
+}
+
+func SafeExecute(fn func() error, context string) error {
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				zap.S().Errorf("Panic recovered in %s: %v\nStack trace:\n%s",
+					context, r, string(debug.Stack()))
+				// Convert panic to error so caller knows something went wrong
+				err = fmt.Errorf("panic in %s: %v", context, r)
+			}
+		}()
+		err = fn()
+	}()
+	return err
 }

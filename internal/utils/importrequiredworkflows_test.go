@@ -8,7 +8,6 @@ import (
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 )
 
-// MockWorkflowGetter implements the Getter interface for testing
 type MockWorkflowGetter struct {
 	ShouldError      bool
 	RepoExistsResult bool
@@ -48,7 +47,6 @@ func (m *MockWorkflowGetter) RepoExists(ownerRepo string) bool {
 	return m.RepoExistsResult
 }
 
-// Implement other required methods with stubs
 func (m *MockWorkflowGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
 	return nil
 }
@@ -73,8 +71,8 @@ func (m *MockWorkflowGetter) FetchRepoRulesets(owner string, repos []data.RepoIn
 	return nil, nil
 }
 
-func (m *MockWorkflowGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
-	return nil, nil
+func (m *MockWorkflowGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
+	return nil
 }
 
 func (m *MockWorkflowGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {
@@ -101,21 +99,17 @@ func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string,
 }
 
 func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
-	// Implement the actual logic to update workflow repository IDs
 	for i, rule := range ruleset.Rules {
 		if rule.Type == "workflows" && rule.Parameters != nil {
 			for j, workflow := range rule.Parameters.Workflows {
-				// Get the source repo info
 				sourceWorkflowRepoQuery, err := s.GetRepoByID(workflow.RepositoryID)
 				if err != nil {
 					continue
 				}
-				// Get the target repo info
 				workflowRepo, err := m.GetRepo(owner, sourceWorkflowRepoQuery.Name)
 				if err != nil {
 					continue
 				}
-				// Update the repository ID
 				ruleset.Rules[i].Parameters.Workflows[j].RepositoryID = workflowRepo.Repository.DatabaseId
 			}
 		}
@@ -156,7 +150,6 @@ func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActo
 }
 
 func (m *MockWorkflowGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows {
-	// Simplified mock implementation
 	if workflowMaps, ok := value.([]map[string]string); ok {
 		var workflows []data.Workflows
 		for _, wfMap := range workflowMaps {
@@ -266,8 +259,8 @@ func TestUpdateRequiredWorkflowRepoID(t *testing.T) {
 		name    string
 		owner   string
 		ruleset data.RepoRuleset
-		want    int // Number of rules
-		wantID  int // Expected repository ID after update
+		want    int
+		wantID  int
 	}{
 		{
 			name:  "no workflow rules",
@@ -334,7 +327,6 @@ func TestUpdateRequiredWorkflowRepoID(t *testing.T) {
 				t.Errorf("UpdateRequiredWorkflowRepoID() returned %d rules, want %d", len(got.Rules), tt.want)
 			}
 
-			// Check if the repository ID was updated for workflow rules
 			if tt.wantID > 0 {
 				for _, rule := range got.Rules {
 					if rule.Type == "workflows" && rule.Parameters != nil && len(rule.Parameters.Workflows) > 0 {

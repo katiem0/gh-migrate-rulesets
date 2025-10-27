@@ -21,7 +21,7 @@ func TestGetAuthToken(t *testing.T) {
 			name:     "empty token",
 			token:    "",
 			hostname: "github.com",
-			want:     "", // Will get from auth.TokenForHost
+			want:     "",
 		},
 	}
 
@@ -74,8 +74,5 @@ func TestGetNextPageURL(t *testing.T) {
 }
 
 func TestRepoExists(t *testing.T) {
-	// Skip this test as it requires a real REST client
-	// Testing RepoExists would require mocking the REST client,
-	// which is complex and already tested via integration tests
 	t.Skip("RepoExists requires a REST client mock - tested via integration/E2E tests")
 }

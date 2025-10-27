@@ -43,16 +43,13 @@ func TestNewLogger(t *testing.T) {
 					return
 				}
 
-				// Check that the logger level is set correctly
 				if !logger.Core().Enabled(tt.wantLevel) {
 					t.Errorf("NewLogger() level not enabled for %v", tt.wantLevel)
 				}
 
-				// Verify that the logger is functional
 				logger.Info("test message")
 				logger.Debug("debug message")
 
-				// Clean up
 				_ = logger.Sync()
 			}
 		})
@@ -69,7 +66,6 @@ func TestNewLogger_Configuration(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// The logger should be successfully created with console encoding
 		if logger == nil {
 			t.Error("NewLogger() returned nil logger")
 		}
@@ -84,10 +80,8 @@ func TestNewLogger_Configuration(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Test that logger can write (outputs to stderr by default)
 		logger.Info("test output")
 
-		// No error should occur during normal logging
 		if logger == nil {
 			t.Error("Logger should not be nil")
 		}
@@ -102,8 +96,6 @@ func TestNewLogger_Configuration(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Verify logger was created successfully
-		// Stack traces are disabled, so error logging should not panic
 		logger.Error("test error without stack trace")
 	})
 }
@@ -118,12 +110,10 @@ func TestNewLogger_LevelTransition(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Debug level should not be enabled
 		if logger.Core().Enabled(zapcore.DebugLevel) {
 			t.Error("Info level logger should not enable debug level")
 		}
 
-		// Info level should be enabled
 		if !logger.Core().Enabled(zapcore.InfoLevel) {
 			t.Error("Info level logger should enable info level")
 		}
@@ -138,7 +128,6 @@ func TestNewLogger_LevelTransition(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Both debug and info levels should be enabled
 		if !logger.Core().Enabled(zapcore.DebugLevel) {
 			t.Error("Debug level logger should enable debug level")
 		}
@@ -159,13 +148,11 @@ func TestNewLogger_Fields(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Test that logger can handle structured logging with fields
 		logger.Info("test with fields",
 			zap.String("key1", "value1"),
 			zap.Int("key2", 42),
 		)
 
-		// Test with sugared logger
 		sugar := logger.Sugar()
 		defer func() {
 			_ = sugar.Sync()
@@ -189,13 +176,11 @@ func TestNewLogger_ErrorHandling(t *testing.T) {
 			_ = logger.Sync()
 		}()
 
-		// Test that error logging works
 		logger.Error("test error",
 			zap.Error(err),
 			zap.String("context", "test"),
 		)
 
-		// Verify logger is still functional after error logging
 		logger.Info("after error log")
 	})
 }
@@ -218,12 +203,10 @@ func TestNewLogger_MultipleInstances(t *testing.T) {
 			_ = logger2.Sync()
 		}()
 
-		// Both loggers should be independent
 		if logger1 == logger2 {
 			t.Error("Multiple logger instances should be different")
 		}
 
-		// Both should be functional
 		logger1.Info("logger 1 message")
 		logger2.Debug("logger 2 message")
 	})

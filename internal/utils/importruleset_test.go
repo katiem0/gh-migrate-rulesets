@@ -26,7 +26,7 @@ func TestCleanSlice(t *testing.T) {
 		{
 			name:  "all empty strings",
 			slice: []string{"", "", ""},
-			want:  []string{}, // Changed from nil to empty slice
+			want:  []string{},
 		},
 		{
 			name:  "nil slice",
@@ -41,14 +41,13 @@ func TestCleanSlice(t *testing.T) {
 		{
 			name:  "single empty element",
 			slice: []string{""},
-			want:  []string{}, // Changed from nil to empty slice
+			want:  []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := CleanSlice(tt.slice)
-			// Use a custom comparison that handles both nil and empty slices
 			if tt.want == nil && got != nil {
 				t.Errorf("CleanSlice() = %v, want %v", got, tt.want)
 			} else if tt.want != nil && !reflect.DeepEqual(got, tt.want) {

@@ -21,8 +21,6 @@ type MockAPIGetter struct {
 	OrgID            int
 }
 
-// Implement the utils.Getter interface for MockAPIGetter
-
 func (m *MockAPIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
 	if m.ShouldError {
 		return errors.New("mock error creating org ruleset")
@@ -42,7 +40,6 @@ func (m *MockAPIGetter) RepoExists(ownerRepo string) bool {
 }
 
 func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
-	// Return a more realistic dataset for testing
 	return []data.RepoRuleset{
 		{
 			ID:           1,
@@ -96,11 +93,11 @@ func (m *MockAPIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) (
 	return m.RepoRulesets, nil
 }
 
-func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
 	if m.ShouldError {
-		return nil, errors.New("mock error gathering repositories")
+		return []data.RepoInfo{}
 	}
-	return m.Repos, nil
+	return m.Repos
 }
 
 func (m *MockAPIGetter) GetAnApp(appSlug string) (*data.AppInfo, error) {
@@ -197,51 +194,43 @@ func (m *MockAPIGetter) ProcessRules(rules []data.Rules) map[string]string {
 }
 
 func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
-	return ruleset // Passthrough for testing
+	return ruleset
 }
 
 func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
-	return ruleset // Passthrough for testing
+	return ruleset
 }
 
-// TestMain runs before all tests and can be used for setup/teardown
 func TestMain(m *testing.M) {
-	// Run tests
 	code := m.Run()
 
-	// Cleanup any CSV files created during tests
 	cleanupTestCSVFiles()
 
 	os.Exit(code)
 }
 
 func cleanupTestCSVFiles() {
-	// Get current directory
 	dir, err := os.Getwd()
 	if err != nil {
 		return
 	}
 
-	// Find all error CSV files matching the test pattern (*-ruleset-errors-*.csv)
 	errorPattern := filepath.Join(dir, "*-ruleset-errors-*.csv")
 	errorMatches, err := filepath.Glob(errorPattern)
 	if err == nil {
 		for _, file := range errorMatches {
 			if err := os.Remove(file); err != nil {
-				// Silently ignore errors during cleanup
 				continue
 			}
 		}
 	}
 
-	// Also clean up in project root (go up two directories from cmd/create)
 	projectRoot := filepath.Join(dir, "..", "..")
 	rootErrorPattern := filepath.Join(projectRoot, "*-ruleset-errors-*.csv")
 	rootErrorMatches, err := filepath.Glob(rootErrorPattern)
 	if err == nil {
 		for _, file := range rootErrorMatches {
 			if err := os.Remove(file); err != nil {
-				// Silently ignore errors during cleanup
 				continue
 			}
 		}
@@ -300,7 +289,6 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 }
 
 func TestRunCmdCreate_FromFile(t *testing.T) {
-	// Create a properly formatted CSV with all 37 columns
 	csvContent := `RulesetLevel,RepositoryName,RuleID,RulesetName,Target,Enforcement,BypassActors,ConditionsRefNameInclude,ConditionsRefNameExclude,ConditionsRepoNameInclude,ConditionsRepoNameExclude,ConditionsRepoNameProtected,ConditionRepoPropertyInclude,ConditionRepoPropertyExclude,RulesCreation,RulesUpdate,RulesDeletion,RulesRequiredLinearHistory,RulesMergeQueue,RulesRequiredDeployments,RulesRequiredSignatures,RulesPullRequest,RulesRequiredStatusChecks,RulesNonFastForward,RulesCommitMessagePattern,RulesCommitAuthorEmailPattern,RulesCommitterEmailPattern,RulesBranchNamePattern,RulesTagNamePattern,RulesFilePathRestriction,RulesFilePathLength,RulesFileExtensionRestriction,RulesMaxFileSize,RulesWorkflows,RulesCodeScanning,CreatedAt,UpdatedAt
 Organization,N/A,1,org-level-ruleset,branch,active,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z
 Repository,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z`
@@ -356,9 +344,9 @@ Repository,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,,,,,,,,,,,
 			},
 			mockGetter: &MockAPIGetter{
 				RepoExistsResult: true,
-				ShouldError:      true, // Simulate API failure
+				ShouldError:      true,
 			},
-			wantErr: false, // The function handles the error and logs it, doesn't return it
+			wantErr: false,
 		},
 	}
 

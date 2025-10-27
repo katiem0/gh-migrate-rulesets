@@ -57,6 +57,7 @@ var RolesMap = map[string]string{
 	"0": "AllDeployKeys",
 	"1": "OrgAdmin",
 	"2": "Maintainer",
+	"3": "Unknown",
 	"4": "Write",
 	"5": "Admin",
 }

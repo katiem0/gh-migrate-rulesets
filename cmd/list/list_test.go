@@ -1,7 +1,6 @@
 package list
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,13 +10,13 @@ import (
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 )
 
-// MockAPIGetter implements the necessary methods for testing
 type MockAPIGetter struct {
-	OrgID        int
-	OrgRulesets  []data.Rulesets
-	Repos        []data.RepoInfo
-	RepoRulesets []data.RepoNameRule
-	ShouldError  bool
+	OrgID              int
+	OrgRulesets        []data.Rulesets
+	Repos              []data.RepoInfo
+	RepoRulesets       []data.RepoNameRule
+	ShouldError        bool
+	ShouldErrorRuleset bool
 }
 
 func (m *MockAPIGetter) FetchOrgId(owner string) (*data.OrgIdQuery, error) {
@@ -34,17 +33,17 @@ func (m *MockAPIGetter) FetchOrgId(owner string) (*data.OrgIdQuery, error) {
 }
 
 func (m *MockAPIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
-	if m.ShouldError {
+	if m.ShouldErrorRuleset {
 		return nil, errors.New("mock error fetching org rulesets")
 	}
 	return m.OrgRulesets, nil
 }
 
-func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) ([]data.RepoInfo, error) {
+func (m *MockAPIGetter) GatherRepositories(owner string, repos []string) []data.RepoInfo {
 	if m.ShouldError {
-		return nil, errors.New("mock error gathering repositories")
+		return []data.RepoInfo{}
 	}
-	return m.Repos, nil
+	return m.Repos
 }
 
 func (m *MockAPIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error) {
@@ -98,35 +97,28 @@ func (m *MockAPIGetter) ProcessRules(rules []data.Rules) map[string]string {
 	return map[string]string{}
 }
 
-// TestMain runs before all tests and can be used for setup/teardown
 func TestMain(m *testing.M) {
-	// Run tests
 	code := m.Run()
 
-	// Cleanup any CSV files created during tests
 	cleanupTestCSVFiles()
 
 	os.Exit(code)
 }
 
 func cleanupTestCSVFiles() {
-	// Get current directory
 	dir, err := os.Getwd()
 	if err != nil {
 		return
 	}
 
-	// Find all CSV files matching the test pattern
 	pattern := filepath.Join(dir, "ruleset-*.csv")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return
 	}
 
-	// Remove each matched file
 	for _, file := range matches {
 		if err := os.Remove(file); err != nil {
-			// Silently ignore errors during cleanup
 			continue
 		}
 	}
@@ -180,7 +172,7 @@ func TestRunCmdList(t *testing.T) {
 				ShouldError: true,
 			},
 			wantErr:     true,
-			errContains: "mock error fetching org ID",
+			errContains: "error fetching organization ID",
 		},
 		{
 			name:  "successful repo rulesets list",
@@ -209,34 +201,62 @@ func TestRunCmdList(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:  "no rulesets found",
+			owner: "test-org",
+			repos: []string{},
+			mockGetter: &MockAPIGetter{
+				OrgID:        12345,
+				OrgRulesets:  []data.Rulesets{},
+				Repos:        []data.RepoInfo{},
+				RepoRulesets: []data.RepoNameRule{},
+				ShouldError:  false,
+			},
+			wantErr:     true,
+			errContains: "no rulesets found",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary buffer for output
-			var buf bytes.Buffer
+			tmpFile := filepath.Join(t.TempDir(), "test-output.csv")
 
-			// Create temporary cmdFlags
 			cmdFlags := &cmdFlags{
 				ruleType: "all",
 			}
 
-			// Run the command
-			err := runCmdList(tt.owner, tt.repos, cmdFlags, tt.mockGetter, &buf)
-
-			// Check error expectations
+			err := runCmdList(tt.owner, tt.repos, cmdFlags, tt.mockGetter, tmpFile)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("runCmdList() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if tt.wantErr && !strings.Contains(err.Error(), tt.errContains) {
+			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 				t.Errorf("runCmdList() error = %v, should contain %v", err, tt.errContains)
 			}
 
-			// If no error expected, check that output was written
-			if !tt.wantErr && buf.Len() == 0 {
-				t.Error("runCmdList() produced no output")
+			if !tt.wantErr {
+				if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
+					t.Error("runCmdList() did not create output file when data was processed")
+				} else {
+					content, err := os.ReadFile(tmpFile)
+					if err != nil {
+						t.Errorf("Failed to read output file: %v", err)
+					}
+					if len(content) == 0 {
+						t.Error("Output file is empty")
+					}
+					contentStr := string(content)
+					if !strings.Contains(contentStr, "RulesetLevel") {
+						t.Error("Output file missing expected CSV headers")
+					}
+				}
+			}
+
+			if tt.wantErr && strings.Contains(tt.errContains, "no rulesets") {
+				if _, err := os.Stat(tmpFile); !os.IsNotExist(err) {
+					t.Error("runCmdList() created output file when no rulesets were found")
+				}
 			}
 		})
 	}
@@ -285,5 +305,137 @@ func TestCmdFlags_Validation(t *testing.T) {
 				t.Errorf("validation for ruleType %s: got error = %v, want error = %v", tt.ruleType, gotErr, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRunCmdList_WithAPIErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		mockGetter *MockAPIGetter
+		wantErr    bool
+	}{
+		{
+			name: "handles nil team data gracefully",
+			mockGetter: &MockAPIGetter{
+				OrgID:       12345,
+				OrgRulesets: []data.Rulesets{}, // Empty org rulesets
+				Repos: []data.RepoInfo{
+					{
+						DatabaseId: 789,
+						Name:       "test-repo",
+					},
+				},
+				RepoRulesets: []data.RepoNameRule{
+					{
+						RepoName: "test-repo",
+						Rule: data.Rulesets{
+							ID:         "R_123",
+							DatabaseID: 123,
+							Name:       "test-ruleset",
+						},
+					},
+				},
+				ShouldError: false,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile := filepath.Join(t.TempDir(), "test-output.csv")
+			err := runCmdList("test-org", []string{}, &cmdFlags{ruleType: "all"}, tt.mockGetter, tmpFile)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("runCmdList() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !tt.wantErr {
+				if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
+					t.Error("runCmdList() did not create output file")
+				}
+			}
+		})
+	}
+}
+
+func TestRunCmdList_OrgOnlyMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		mockGetter  *MockAPIGetter
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "orgOnly mode success",
+			mockGetter: &MockAPIGetter{
+				OrgID: 12345,
+				OrgRulesets: []data.Rulesets{
+					{
+						ID:         "R_123",
+						DatabaseID: 123,
+						Name:       "test-ruleset",
+					},
+				},
+				ShouldError: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "orgOnly mode with ruleset fetch error",
+			mockGetter: &MockAPIGetter{
+				OrgID:              12345,
+				ShouldErrorRuleset: true,
+			},
+			wantErr:     true,
+			errContains: "orgOnly mode",
+		},
+		{
+			name: "orgOnly mode with org ID fetch error",
+			mockGetter: &MockAPIGetter{
+				ShouldError: true,
+			},
+			wantErr:     true,
+			errContains: "error fetching organization ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile := filepath.Join(t.TempDir(), "test-output.csv")
+			err := runCmdList("test-org", []string{}, &cmdFlags{ruleType: "orgOnly"}, tt.mockGetter, tmpFile)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("runCmdList() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("runCmdList() error = %v, should contain %v", err, tt.errContains)
+			}
+
+			if tt.wantErr {
+				if _, err := os.Stat(tmpFile); !os.IsNotExist(err) {
+					t.Error("runCmdList() created output file when there was an error")
+				}
+			}
+		})
+	}
+}
+
+func TestRunCmdList_FileNotCreatedOnError(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "test-output.csv")
+
+	mockGetter := &MockAPIGetter{
+		ShouldError: true,
+	}
+
+	err := runCmdList("test-org", []string{}, &cmdFlags{ruleType: "all"}, mockGetter, tmpFile)
+
+	if err == nil {
+		t.Error("runCmdList() expected error but got none")
+	}
+
+	if _, err := os.Stat(tmpFile); !os.IsNotExist(err) {
+		t.Error("runCmdList() should not create file when error occurs before data processing")
 	}
 }

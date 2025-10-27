@@ -16,7 +16,6 @@ func TestNewCmdRoot(t *testing.T) {
 		t.Errorf("NewCmdRoot() Short description incorrect")
 	}
 
-	// Check that subcommands are added
 	hasListCmd := false
 	hasCreateCmd := false
 
@@ -48,24 +47,13 @@ func TestRootCmd_CompletionOptions(t *testing.T) {
 
 func TestRootCommandHelpDisabled(t *testing.T) {
 	cmd := NewCmdRoot()
-
-	// The help command is set via SetHelpCommand, not added as a regular command
-	// We can't directly access it, but we can verify that the help system is customized
-	// by checking that executing "help" doesn't cause issues
-
-	// Set args to trigger help
 	cmd.SetArgs([]string{"help"})
 
-	// This should not panic or error since we've set a custom help command
 	err := cmd.Execute()
 
-	// The custom no-help command should be hidden and do nothing
-	// So we expect no error when help is called
 	if err == nil {
-		// This is expected - the help command is suppressed
 		return
 	}
 
-	// If we get an error, it might be because help is not properly suppressed
 	t.Logf("Help command execution returned: %v", err)
 }

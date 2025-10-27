@@ -1,6 +1,8 @@
 package log
 
 import (
+	"fmt"
+
 	"go.uber.org/zap"
 )
 
@@ -22,4 +24,24 @@ func NewLogger(debug bool) (*zap.Logger, error) {
 	}
 
 	return loggerConfig.Build()
+}
+
+// LogAndWrapError logs an error message and wraps the error with additional context.
+// It returns nil if the input error is nil, otherwise it logs the error with the formatted context
+// and returns a wrapped error that preserves the original error chain.
+// The context parameter is a format string, and args are the values to format into the message.
+func LogAndWrapError(err error, context string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+
+	contextMsg := fmt.Sprintf(context, args...)
+	zap.S().Errorf("%s: %v", contextMsg, err)
+	return fmt.Errorf("%s: %w", contextMsg, err)
+}
+
+// LogWarning logs a warning message using the global zap logger.
+// The context parameter is a format string, and args are the values to format into the message.
+func LogWarning(context string, args ...interface{}) {
+	zap.S().Warnf(context, args...)
 }
