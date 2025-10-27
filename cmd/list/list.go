@@ -299,78 +299,81 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 						idx+1, len(allRepoRules), owner, singleRepoRule.RepoName,
 						singleRepoRule.Rule.Name, singleRepoRule.Rule.DatabaseID)
 
-					err := utils.SafeExecute(func() error {
-						zap.S().Debugf("Fetching detailed ruleset data for %s/%s ruleset: %s",
-							owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
+					zap.S().Debugf("Fetching detailed ruleset data for %s/%s ruleset: %s",
+						owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
 
-						repoLevelRulesetResponse, err := g.GetRepoLevelRuleset(owner, singleRepoRule.RepoName, singleRepoRule.Rule.DatabaseID)
-						if err != nil {
-							return fmt.Errorf("failed to get repo level ruleset: %w", err)
-						}
+					repoLevelRulesetResponse, err := g.GetRepoLevelRuleset(owner, singleRepoRule.RepoName, singleRepoRule.Rule.DatabaseID)
+					if err != nil {
+						zap.S().Warnf("Skipping ruleset %s for repo %s due to error: %v",
+							singleRepoRule.Rule.Name, singleRepoRule.RepoName, err)
+						repoSkippedRulesets++
+						continue
+					}
 
-						zap.S().Debugf("Unmarshaling repo ruleset response for %s/%s: %s",
-							owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
-						var repoLevelRuleset data.RepoRuleset
-						if err = json.Unmarshal(repoLevelRulesetResponse, &repoLevelRuleset); err != nil {
-							return fmt.Errorf("failed to unmarshal repo ruleset: %w", err)
-						}
+					zap.S().Debugf("Unmarshaling repo ruleset response for %s/%s: %s",
+						owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
+					var repoLevelRuleset data.RepoRuleset
+					if err = json.Unmarshal(repoLevelRulesetResponse, &repoLevelRuleset); err != nil {
+						zap.S().Warnf("Skipping ruleset %s for repo %s due to error: %v",
+							singleRepoRule.Rule.Name, singleRepoRule.RepoName, err)
+						repoSkippedRulesets++
+						continue
+					}
 
-						zap.S().Debugf("Processing bypass actors for repo ruleset: %s (count: %d)",
-							singleRepoRule.Rule.Name, len(repoLevelRuleset.BypassActors))
-						Actors := g.ProcessActorsForExport(repoLevelRuleset.BypassActors, owner, orgID, singleRepoRule.Rule.ID)
-						zap.S().Debugf("Processed %d bypass actors", len(Actors))
+					zap.S().Debugf("Processing bypass actors for repo ruleset: %s (count: %d)",
+						singleRepoRule.Rule.Name, len(repoLevelRuleset.BypassActors))
+					Actors := g.ProcessActorsForExport(repoLevelRuleset.BypassActors, owner, orgID, singleRepoRule.Rule.ID)
+					zap.S().Debugf("Processed %d bypass actors", len(Actors))
 
-						zap.S().Debugf("Processing rules for repo ruleset: %s (count: %d)",
-							singleRepoRule.Rule.Name, len(repoLevelRuleset.Rules))
-						repoRulesMap := g.ProcessRules(repoLevelRuleset.Rules)
-						zap.S().Debugf("Processed %d rule types", len(repoRulesMap))
+					zap.S().Debugf("Processing rules for repo ruleset: %s (count: %d)",
+						singleRepoRule.Rule.Name, len(repoLevelRuleset.Rules))
+					repoRulesMap := g.ProcessRules(repoLevelRuleset.Rules)
+					zap.S().Debugf("Processed %d rule types", len(repoRulesMap))
 
-						zap.S().Debugf("Processing conditions for repo ruleset: %s", singleRepoRule.Rule.Name)
-						repoConditions := utils.ProcessConditions(repoLevelRuleset)
+					zap.S().Debugf("Processing conditions for repo ruleset: %s", singleRepoRule.Rule.Name)
+					repoConditions := utils.ProcessConditions(repoLevelRuleset)
 
-						zap.S().Debugf("Writing CSV row for repo ruleset: %s/%s - %s",
-							owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
-						return csvWriter.Write([]string{
-							repoLevelRuleset.SourceType,
-							singleRepoRule.RepoName,
-							strconv.Itoa(repoLevelRuleset.ID),
-							repoLevelRuleset.Name,
-							repoLevelRuleset.Target,
-							repoLevelRuleset.Enforcement,
-							strings.Join(Actors, "|"),
-							repoConditions.IncludeRefNames,
-							repoConditions.ExcludeRefNames,
-							repoConditions.IncludeNames,
-							repoConditions.ExcludeNames,
-							repoConditions.BoolNames,
-							strings.Join(repoConditions.PropertyInclude, "|"),
-							strings.Join(repoConditions.PropertyExclude, "|"),
-							repoRulesMap["creation"],
-							repoRulesMap["update"],
-							repoRulesMap["deletion"],
-							repoRulesMap["required_linear_history"],
-							repoRulesMap["merge_queue"],
-							repoRulesMap["required_deployments"],
-							repoRulesMap["required_signatures"],
-							repoRulesMap["pull_request"],
-							repoRulesMap["required_status_checks"],
-							repoRulesMap["non_fast_forward"],
-							repoRulesMap["commit_message_pattern"],
-							repoRulesMap["commit_author_email_pattern"],
-							repoRulesMap["committer_email_pattern"],
-							repoRulesMap["branch_name_pattern"],
-							repoRulesMap["tag_name_pattern"],
-							repoRulesMap["file_path_restriction"],
-							repoRulesMap["max_file_path_length"],
-							repoRulesMap["file_extension_restriction"],
-							repoRulesMap["max_file_size"],
-							repoRulesMap["workflows"],
-							repoRulesMap["code_scanning"],
-							repoLevelRuleset.CreatedAt,
-							repoLevelRuleset.UpdatedAt,
-						})
-					}, fmt.Sprintf("processing repo %s ruleset %s", singleRepoRule.RepoName, singleRepoRule.Rule.Name))
-
+					zap.S().Debugf("Writing CSV row for repo ruleset: %s/%s - %s",
+						owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
+					err = csvWriter.Write([]string{
+						repoLevelRuleset.SourceType,
+						singleRepoRule.RepoName,
+						strconv.Itoa(repoLevelRuleset.ID),
+						repoLevelRuleset.Name,
+						repoLevelRuleset.Target,
+						repoLevelRuleset.Enforcement,
+						strings.Join(Actors, "|"),
+						repoConditions.IncludeRefNames,
+						repoConditions.ExcludeRefNames,
+						repoConditions.IncludeNames,
+						repoConditions.ExcludeNames,
+						repoConditions.BoolNames,
+						strings.Join(repoConditions.PropertyInclude, "|"),
+						strings.Join(repoConditions.PropertyExclude, "|"),
+						repoRulesMap["creation"],
+						repoRulesMap["update"],
+						repoRulesMap["deletion"],
+						repoRulesMap["required_linear_history"],
+						repoRulesMap["merge_queue"],
+						repoRulesMap["required_deployments"],
+						repoRulesMap["required_signatures"],
+						repoRulesMap["pull_request"],
+						repoRulesMap["required_status_checks"],
+						repoRulesMap["non_fast_forward"],
+						repoRulesMap["commit_message_pattern"],
+						repoRulesMap["commit_author_email_pattern"],
+						repoRulesMap["committer_email_pattern"],
+						repoRulesMap["branch_name_pattern"],
+						repoRulesMap["tag_name_pattern"],
+						repoRulesMap["file_path_restriction"],
+						repoRulesMap["max_file_path_length"],
+						repoRulesMap["file_extension_restriction"],
+						repoRulesMap["max_file_size"],
+						repoRulesMap["workflows"],
+						repoRulesMap["code_scanning"],
+						repoLevelRuleset.CreatedAt,
+						repoLevelRuleset.UpdatedAt,
+					})
 					if err != nil {
 						zap.S().Warnf("Skipping ruleset %s for repo %s due to error: %v",
 							singleRepoRule.Rule.Name, singleRepoRule.RepoName, err)

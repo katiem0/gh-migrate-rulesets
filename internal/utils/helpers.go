@@ -5,25 +5,11 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"runtime/debug"
 	"strings"
 
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 	"go.uber.org/zap"
 )
-
-func SafeExecute(fn func() error, context string) error {
-	var err error
-	defer func() {
-		if r := recover(); r != nil {
-			zap.S().Errorf("Panic recovered in %s: %v\nStack trace:\n%s",
-				context, r, string(debug.Stack()))
-			err = fmt.Errorf("panic in %s: %v", context, r)
-		}
-	}()
-	err = fn()
-	return err
-}
 
 func Contains(slice []string, item string) bool {
 	for _, s := range slice {
