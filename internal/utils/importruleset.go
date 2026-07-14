@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
 	headerMap := make(map[string]int)
@@ -26,11 +26,11 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
 		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
-		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]])
+		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]], actorMapping)
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
 		ruleHeaders := fileData[0][14:35]
 		ruleValues := each[14:35]
-		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues)
+		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues, repoMapping)
 		repoRuleset.CreatedAt = each[headerMap["CreatedAt"]]
 		repoRuleset.UpdatedAt = each[headerMap["UpdatedAt"]]
 		importRepoRuleset = append(importRepoRuleset, repoRuleset)
@@ -86,7 +86,7 @@ func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
 	return propertyPatterns
 }
 
-func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []string) []data.Rules {
+func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []string, repoMapping map[string]string) []data.Rules {
 	rules := make([]data.Rules, 0, len(headerMap))
 
 	for i := 0; i < len(headerMap) && i < len(ruleValues); i++ {
@@ -99,7 +99,7 @@ func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []st
 		}
 		if ruleValues[i] != "" {
 			parameters := ParseParameters(ruleValues[i])
-			rule.Parameters = g.MapToParameters(owner, parameters, header)
+			rule.Parameters = g.MapToParameters(owner, parameters, header, repoMapping)
 		} else {
 			zap.S().Debugf("%s does not contain Parameters", header)
 		}

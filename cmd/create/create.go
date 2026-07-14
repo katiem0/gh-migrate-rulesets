@@ -24,8 +24,11 @@ type cmdFlags struct {
 	token          string
 	hostname       string
 	fileName       string
+	repoMapping    string
+	actorMapping   string
 	repos          []string
 	ruleType       string
+	dryRun         bool
 	debug          bool
 }
 
@@ -43,6 +46,16 @@ func NewCmdCreate() *cobra.Command {
 				return errors.New("a file or source organization must be specified where rulesets will be created from")
 			} else if len(cmdFlags.fileName) > 0 && len(cmdFlags.sourceOrg) > 0 {
 				return errors.New("specify only one of `--source-organization` or `from-file`")
+			}
+			if len(cmdFlags.repoMapping) > 0 {
+				if _, err := os.Stat(cmdFlags.repoMapping); err != nil {
+					return fmt.Errorf("repo mapping file not found: %w", err)
+				}
+			}
+			if len(cmdFlags.actorMapping) > 0 {
+				if _, err := os.Stat(cmdFlags.actorMapping); err != nil {
+					return fmt.Errorf("actor mapping file not found: %w", err)
+				}
 			}
 			return nil
 		},
@@ -75,8 +88,11 @@ func NewCmdCreate() *cobra.Command {
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "source-hostname", "", "github.com", "GitHub Enterprise Server hostname where rulesets are copied from")
 	createCmd.Flags().StringVarP(&cmdFlags.fileName, "from-file", "f", "", "Path and Name of CSV file to create rulesets from")
+	createCmd.Flags().StringVarP(&cmdFlags.repoMapping, "repo-mapping", "", "", "Path and Name of CSV file mapping source repository names to target repository names")
+	createCmd.Flags().StringVarP(&cmdFlags.actorMapping, "actor-mapping", "", "", "Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)")
 	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
+	createCmd.Flags().BoolVarP(&cmdFlags.dryRun, "dry-run", "", false, "Preview ruleset creates without writing changes")
 	createCmd.PersistentFlags().BoolVarP(&cmdFlags.debug, "debug", "d", false, "To debug logging")
 
 	return createCmd
@@ -90,6 +106,15 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 	var sourceOrgID int
 	var importRepoRulesetsList []data.RepoRuleset
 	var errorRulesets []data.ErrorRulesets
+
+	repoMapping, err := utils.LoadRepoMapping(cmdFlags.repoMapping)
+	if err != nil {
+		return err
+	}
+	actorMapping, err := utils.LoadActorMapping(cmdFlags.actorMapping)
+	if err != nil {
+		return err
+	}
 
 	zap.S().Infof("Reading in file %s to identify repository rulesets", cmdFlags.fileName)
 	if len(cmdFlags.fileName) > 0 {
@@ -111,7 +136,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 			zap.S().Errorf("Error arose reading assignments from csv file")
 			return err
 		}
-		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData)
+		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData, actorMapping, repoMapping)
 		for _, ruleset := range importRepoRulesetsList {
 
 			createRuleset, err := utils.ProcessRulesets(ruleset)
@@ -131,6 +156,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 			}
 			reader := bytes.NewReader(createRulesetJSON)
 			if ruleset.SourceType == "Organization" {
+				if cmdFlags.dryRun {
+					zap.S().Infof("[dry-run] would CREATE org ruleset %s under %s", createRuleset.Name, owner)
+					continue
+				}
 				zap.S().Debugf("Creating organization rulesets under %s", owner)
 				err = g.CreateOrgLevelRuleset(owner, reader)
 				if err != nil {
@@ -145,6 +174,9 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 				}
 				zap.S().Infof("Successfully create repository ruleset %s for %s", ruleset.Name, owner)
 			} else if ruleset.SourceType == "Repository" {
+				sourceRepoName := strings.Split(ruleset.Source, "/")[1]
+				targetRepoName := utils.ResolveTargetRepo(repoMapping, sourceRepoName)
+				ruleset.Source = fmt.Sprintf("%s/%s", owner, targetRepoName)
 				zap.S().Debugf("Trying to create repository rulesets under %s", ruleset.Source)
 				exists := g.RepoExists(ruleset.Source)
 				if !exists {
@@ -154,6 +186,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 					continue
 				} else {
 					{
+						if cmdFlags.dryRun {
+							zap.S().Infof("[dry-run] would CREATE repo ruleset %s under %s", createRuleset.Name, ruleset.Source)
+							continue
+						}
 						zap.S().Debugf("Creating rulesets under %s", ruleset.Source)
 						err = g.CreateRepoLevelRuleset(ruleset.Source, reader)
 						if err != nil {
@@ -202,9 +238,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							zap.S().Error("Error raised with variable response", zap.Error(err))
 							continue
 						}
-						updatedOrgLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, orgLevelRuleset, s)
-						updatedOrgWorkflowRuleset := g.UpdateRequiredWorkflowRepoID(owner, updatedOrgLevelRuleset, s)
-						createRuleset, err := utils.ProcessRulesets(updatedOrgWorkflowRuleset)
+						translatedOrgRuleset := translateRuleset(g, s, owner, sourceOrg, sourceOrgID, orgLevelRuleset, actorMapping, repoMapping)
+						createRuleset, err := utils.ProcessRulesets(translatedOrgRuleset)
 						if err != nil {
 							zap.S().Errorf("Error creating rulesets data: %v", err)
 							continue
@@ -215,6 +250,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							continue
 						}
 						reader := bytes.NewReader(createRulesetJSON)
+						if cmdFlags.dryRun {
+							zap.S().Infof("[dry-run] would CREATE org ruleset %s under %s", createRuleset.Name, owner)
+							continue
+						}
 						zap.S().Debugf("Creating rulesets under target organization %s", owner)
 						err = g.CreateOrgLevelRuleset(owner, reader)
 						if err != nil {
@@ -233,17 +272,17 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 
 			if cmdFlags.ruleType == "all" || cmdFlags.ruleType == "repoOnly" {
 				zap.S().Infof("Gathering repositories specified in org %s to list rulesets for", sourceOrg)
-				allRepos := g.GatherRepositories(sourceOrg, repos)
+				allRepos := s.GatherRepositories(sourceOrg, repos)
 
 				if len(allRepos) > 0 {
-					allRepoRules, err := g.FetchRepoRulesets(sourceOrg, allRepos)
+					allRepoRules, err := s.FetchRepoRulesets(sourceOrg, allRepos)
 					if err != nil {
 						zap.S().Error("Error raised in fetching repo ruleset data", zap.Error(err))
 						return err
 					}
 					for _, singleRepoRule := range allRepoRules {
 						zap.S().Debugf("Gathering specific ruleset data for repo %s rule %s", singleRepoRule.RepoName, singleRepoRule.Rule.Name)
-						repoLevelRulesetResponse, err := g.GetRepoLevelRuleset(sourceOrg, singleRepoRule.RepoName, singleRepoRule.Rule.DatabaseID)
+						repoLevelRulesetResponse, err := s.GetRepoLevelRuleset(sourceOrg, singleRepoRule.RepoName, singleRepoRule.Rule.DatabaseID)
 						if err != nil {
 							zap.S().Error("Error raised in getting repo variables", zap.Error(err))
 							continue
@@ -254,9 +293,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 								zap.S().Debugf("Error raised with variable response")
 								continue
 							}
-							updatedRepoLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, repoLevelRuleset, s)
-							updatedRepoWorkflowRuleset := g.UpdateRequiredWorkflowRepoID(owner, updatedRepoLevelRuleset, s)
-							createRuleset, err := utils.ProcessRulesets(updatedRepoWorkflowRuleset)
+							translatedRepoRuleset := translateRuleset(g, s, owner, sourceOrg, sourceOrgID, repoLevelRuleset, actorMapping, repoMapping)
+							createRuleset, err := utils.ProcessRulesets(translatedRepoRuleset)
 							if err != nil {
 								zap.S().Errorf("Error creating rulesets data: %v", err)
 								continue
@@ -268,16 +306,21 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							}
 							reader := bytes.NewReader(createRulesetJSON)
 
-							repoName := strings.Split(repoLevelRuleset.Source, "/")[1]
-							zap.S().Debugf("Creating rulesets under %s/%s", owner, repoName)
-							newSource := fmt.Sprintf("%s/%s", owner, repoName)
+							sourceRepoName := strings.Split(repoLevelRuleset.Source, "/")[1]
+							targetRepoName := utils.ResolveTargetRepo(repoMapping, sourceRepoName)
+							newSource := fmt.Sprintf("%s/%s", owner, targetRepoName)
+							zap.S().Debugf("Creating rulesets under %s", newSource)
 							exists := g.RepoExists(newSource)
 							if !exists {
-								zap.S().Debugf("Repository %s does not exist in %s", repoName, owner)
+								zap.S().Debugf("Repository %s does not exist in %s", targetRepoName, owner)
 								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: repoLevelRuleset.Source, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
 								zap.S().Infof("Error creating ruleset %s for %s: %s", repoLevelRuleset.Source, createRuleset.Name, "Repository does not exist")
 								continue
 							} else {
+								if cmdFlags.dryRun {
+									zap.S().Infof("[dry-run] would CREATE repo ruleset %s under %s", createRuleset.Name, newSource)
+									continue
+								}
 								err = g.CreateRepoLevelRuleset(newSource, reader)
 								if err != nil {
 									if strings.Contains(err.Error(), "\n") {
@@ -315,4 +358,13 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 		zap.S().Infof("Completed list of rulesets in org %s", owner)
 	}
 	return nil
+}
+
+// translateRuleset resolves stale source IDs (bypass actors, required workflow repos,
+// status check integrations) against the target before the ruleset is created.
+func translateRuleset(g utils.Getter, s utils.Getter, owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, actorMapping map[string]int, repoMapping map[string]string) data.RepoRuleset {
+	ruleset = g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, ruleset, s, actorMapping)
+	ruleset = g.UpdateRequiredWorkflowRepoID(owner, ruleset, s, repoMapping)
+	ruleset = g.UpdateStatusCheckIntegrationID(owner, sourceOrg, ruleset, s)
+	return ruleset
 }

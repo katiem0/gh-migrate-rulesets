@@ -8,16 +8,29 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	bypassActors := strings.Split(bypassActorsStr, "|")
 	actors := make([]data.BypassActor, 0, len(bypassActors))
 	var actorID *int
 
 	for _, actor := range bypassActors {
 		actorData := strings.Split(actor, ";")
-		if len(actorData) < 2 {
+		if len(actorData) < 4 {
 			zap.S().Debug("No Bypass Actor data found")
 			continue
+		}
+		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+		if sourceID, err := strconv.Atoi(actorData[0]); err == nil {
+			if targetID, ok := resolveMappedActorID(actorMapping, actorData[1], sourceID); ok {
+				zap.S().Debugf("Applying actor mapping for %s %d -> %d", actorData[1], sourceID, targetID)
+				mappedID := targetID
+				actors = append(actors, data.BypassActor{
+					ActorID:    &mappedID,
+					ActorType:  actorData[1],
+					BypassMode: actorData[3],
+				})
+				continue
+			}
 		}
 		if _, ok := data.RolesMap[actorData[0]]; !ok {
 			zap.S().Debugf("Gathering appropriate IDs for Bypass Actor: %s", actorData[2])
@@ -79,67 +92,76 @@ func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr str
 	return actors
 }
 
-func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset {
 	zap.S().Debugf("Updating Bypass Actor ID for new org %s", owner)
 
 	for i, actor := range ruleset.BypassActors {
 		if actor.ActorType == "DeployKey" {
 			zap.S().Debugf("Keeping for DeployKey in ruleset %s", ruleset.Name)
 			continue
-		} else {
-			if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; !ok {
-				if actor.ActorType == "RepositoryRole" {
-					zap.S().Debugf("Processing bypass actor custom repository role")
-					sourceRole, err := s.GetCustomRoles(sourceOrg, *actor.ActorID)
-					if err != nil {
-						zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
-						continue
+		}
+		if actor.ActorID == nil {
+			continue
+		}
+		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+		if targetID, ok := resolveMappedActorID(actorMapping, actor.ActorType, *actor.ActorID); ok {
+			zap.S().Debugf("Applying actor mapping for %s %d -> %d", actor.ActorType, *actor.ActorID, targetID)
+			mappedID := targetID
+			ruleset.BypassActors[i].ActorID = &mappedID
+			continue
+		}
+		if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; !ok {
+			if actor.ActorType == "RepositoryRole" {
+				zap.S().Debugf("Processing bypass actor custom repository role")
+				sourceRole, err := s.GetCustomRoles(sourceOrg, *actor.ActorID)
+				if err != nil {
+					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				}
+				roleData, err := g.GetRepoCustomRoles(owner)
+				if err != nil || len(roleData.CustomRoles) == 0 {
+					zap.S().Infof("Failed to get new custom role data for Role ID %d", actor.ActorID)
+					continue
+				} else {
+					for _, CustomRole := range roleData.CustomRoles {
+						if CustomRole.Name == sourceRole.Name {
+							ruleset.BypassActors[i].ActorID = &CustomRole.ID
+						}
 					}
-					roleData, err := g.GetRepoCustomRoles(owner)
-					if err != nil || len(roleData.CustomRoles) == 0 {
-						zap.S().Infof("Failed to get new custom role data for Role ID %d", actor.ActorID)
-						continue
-					} else {
-						for _, CustomRole := range roleData.CustomRoles {
-							if CustomRole.Name == sourceRole.Name {
-								ruleset.BypassActors[i].ActorID = &CustomRole.ID
+				}
+			} else if actor.ActorType == "Integration" {
+				zap.S().Debugf("Processing bypass actor integration from %s", sourceOrg)
+				sourceAppIntegration, err := s.GetAppInstallations(sourceOrg)
+				if err != nil {
+					zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", actor.ActorID, err)
+					continue
+				} else {
+					for _, app := range sourceAppIntegration.Installations {
+						zap.S().Debugf("Processing bypass actor integration %s", app.AppSlug)
+						if *actor.ActorID == app.AppID {
+							appIntegrationInfo, err := g.GetAnApp(app.AppSlug)
+							if err != nil {
+								zap.S().Errorf("Failed to get new integration app data for actor ID %d: %v", actor.ActorID, err)
+								continue
+							} else {
+								ruleset.BypassActors[i].ActorID = &appIntegrationInfo.AppID
 							}
 						}
 					}
-				} else if actor.ActorType == "Integration" {
-					zap.S().Debugf("Processing bypass actor integration from %s", sourceOrg)
-					sourceAppIntegration, err := s.GetAppInstallations(sourceOrg)
+				}
+			} else if actor.ActorType == "Team" {
+				zap.S().Debugf("Processing bypass actor team")
+				sourceTeamData, err := s.GetTeamData(sourceOrgID, *actor.ActorID)
+				if err != nil {
+					zap.S().Infof("Failed to get team data for team id %d", actor.ActorID)
+					continue
+				} else {
+					teamData, err := g.GetTeamByName(owner, sourceTeamData.Name)
 					if err != nil {
-						zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", actor.ActorID, err)
+						zap.S().Infof("Failed to get team data for team name %s", sourceTeamData.Name)
 						continue
 					} else {
-						for _, app := range sourceAppIntegration.Installations {
-							zap.S().Debugf("Processing bypass actor integration %s", app.AppSlug)
-							if *actor.ActorID == app.AppID {
-								appIntegrationInfo, err := g.GetAnApp(app.AppSlug)
-								if err != nil {
-									zap.S().Errorf("Failed to get new integration app data for actor ID %d: %v", actor.ActorID, err)
-									continue
-								} else {
-									ruleset.BypassActors[i].ActorID = &appIntegrationInfo.AppID
-								}
-							}
-						}
-					}
-				} else if actor.ActorType == "Team" {
-					zap.S().Debugf("Processing bypass actor team")
-					sourceTeamData, err := s.GetTeamData(sourceOrgID, *actor.ActorID)
-					if err != nil {
-						zap.S().Infof("Failed to get team data for team id %d", actor.ActorID)
-						continue
-					} else {
-						teamData, err := g.GetTeamByName(owner, sourceTeamData.Name)
-						if err != nil {
-							zap.S().Infof("Failed to get team data for team name %s", sourceTeamData.Name)
-							continue
-						} else {
-							ruleset.BypassActors[i].ActorID = &teamData.ID
-						}
+						ruleset.BypassActors[i].ActorID = &teamData.ID
 					}
 				}
 			}

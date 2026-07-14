@@ -149,10 +149,13 @@ Usage:
   migrate-rules create [flags] <organization>
 
 Flags:
+      --actor-mapping string     Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)
   -d, --debug                    To debug logging
+      --dry-run                  Preview ruleset creates without writing changes
   -f, --from-file string         Path and Name of CSV file to create rulesets from
   -h, --help                     help for create
       --hostname string          GitHub Enterprise Server hostname (default "github.com")
+      --repo-mapping string      Path and Name of CSV file mapping source repository names to target repository names
   -R, --repos strings            List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)
   -r, --ruleType string          List rulesets for a specific application or all: {all|repoOnly|orgOnly} (default "all")
       --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
@@ -161,8 +164,8 @@ Flags:
   -t, --token string             GitHub personal access token for organization to write to (default "gh auth token")
 ```
 
-If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to map the object
-based on name to the new ID under the target organization:
+If specifying `--source-org` and/or `--repos`, the CLI extension performs a live read from the source
+organization and attempts to map each object based on name to the new ID under the target organization:
 
 - Bypass Actors
   - Teams
@@ -173,6 +176,64 @@ based on name to the new ID under the target organization:
 - Required Workflow
   - Repository
 
+This automatic name-based translation resolves the IDs called out in the warning above, so the
+`list` → `create --from-file` workflow no longer requires manual `csv` edits for teams, integrations,
+custom roles, required workflow repositories, or status check integrations.
+
+`create` supports GitHub.com, GitHub Enterprise Server, and GitHub Enterprise Cloud with data
+residency through `--hostname` and `--source-hostname`. Both hostname flags default to `github.com`;
+use the target hostname with `--hostname` and the source hostname with `--source-hostname`.
+
 > [!NOTE]
 > If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv`
 > file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
+
+#### Previewing changes
+
+Use `--dry-run` to log the org and repository rulesets that would be created without writing any
+changes to the target:
+
+```sh
+gh migrate-rulesets create <target-org> --source-org <source-org> --dry-run
+```
+
+#### Mapping repository names
+
+If source repositories have different names in the target organization, use `--repo-mapping` with a
+headered `csv` file. The mapping is applied to both `--from-file` and `--source-org` inputs and is
+used for the target ruleset location and required workflow repository references.
+
+```csv
+source,target
+api-service,api-service-prod
+web-app,frontend
+```
+
+#### Mapping bypass actor IDs
+
+Bypass actors for **teams**, **integrations/apps**, and **custom repository roles** are translated
+automatically by name or slug against the target organization. **Base repository roles** (e.g.
+`Write`, `Maintain`, `Admin`) cannot be resolved this way, because GitHub does not expose an API to
+look up base role IDs by name on the target. Their IDs are consistent across GitHub.com and GitHub
+Enterprise Cloud, but can differ on GitHub Enterprise Cloud with data residency (`*.ghe.com`) tenants.
+
+For those cases, supply an actor mapping `csv` with `--actor-mapping`. Each row maps a source actor
+ID to the corresponding target ID, keyed by `actor_type` and `source_id`. The mapping is applied to
+both `--from-file` and `--source-org` inputs. A ready-to-fill template is provided at
+[`docs/actor-mapping-template.csv`](docs/actor-mapping-template.csv):
+
+```csv
+actor_type,source_id,source_name,target_id
+RepositoryRole,2,Maintain,2
+RepositoryRole,4,Write,4
+RepositoryRole,5,Admin,7
+```
+
+The `source_name` column is a reference only and is ignored. Rows with a blank `target_id` fall back
+to the automatic name-based resolution, so you only need to fill in the IDs the target org actually
+differs on. An explicit mapping entry always wins, so `--actor-mapping` can also override a renamed
+team, app, or custom role.
+
+> [!NOTE]
+> If a bypass actor ID is not mapped and cannot be resolved automatically, the ruleset is skipped and
+> written to the error `csv` file for manual follow-up.

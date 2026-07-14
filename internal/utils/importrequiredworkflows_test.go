@@ -55,7 +55,7 @@ func (m *MockWorkflowGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Re
 	return nil
 }
 
-func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset {
 	return nil
 }
 
@@ -94,11 +94,23 @@ func (m *MockWorkflowGetter) GetRepoCustomRoles(owner string) (*data.CustomRepoR
 	return &data.CustomRepoRoles{}, nil
 }
 
-func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset {
 	return ruleset
 }
 
-func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (m *MockWorkflowGetter) UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error {
+	return nil
+}
+
+func (m *MockWorkflowGetter) UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error {
+	return nil
+}
+
+func (m *MockWorkflowGetter) UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+	return ruleset
+}
+
+func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter, repoMapping map[string]string) data.RepoRuleset {
 	for i, rule := range ruleset.Rules {
 		if rule.Type == "workflows" && rule.Parameters != nil {
 			for j, workflow := range rule.Parameters.Workflows {
@@ -145,11 +157,11 @@ func (m *MockWorkflowGetter) GetTeamByName(owner string, teamSlug string) (*data
 	return nil, nil
 }
 
-func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	return nil
 }
 
-func (m *MockWorkflowGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows {
+func (m *MockWorkflowGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}, repoMapping map[string]string) []data.Workflows {
 	if workflowMaps, ok := value.([]map[string]string); ok {
 		var workflows []data.Workflows
 		for _, wfMap := range workflowMaps {
@@ -169,7 +181,7 @@ func (m *MockWorkflowGetter) ParametersToMap(params data.Parameters, ruleType st
 	return nil
 }
 
-func (m *MockWorkflowGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters {
+func (m *MockWorkflowGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters {
 	return nil
 }
 
@@ -226,7 +238,7 @@ func TestParseRequiredWorkflowsForImport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mockGetter.ParseRequiredWorkflowsForImport(tt.owner, tt.value)
+			got := mockGetter.ParseRequiredWorkflowsForImport(tt.owner, tt.value, map[string]string{})
 			if len(got) != tt.want {
 				t.Errorf("ParseRequiredWorkflowsForImport() returned %d workflows, want %d", len(got), tt.want)
 			}
@@ -322,7 +334,7 @@ func TestUpdateRequiredWorkflowRepoID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mockGetter.UpdateRequiredWorkflowRepoID(tt.owner, tt.ruleset, mockSource)
+			got := mockGetter.UpdateRequiredWorkflowRepoID(tt.owner, tt.ruleset, mockSource, map[string]string{})
 			if len(got.Rules) != tt.want {
 				t.Errorf("UpdateRequiredWorkflowRepoID() returned %d rules, want %d", len(got.Rules), tt.want)
 			}

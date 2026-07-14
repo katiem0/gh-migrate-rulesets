@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -53,7 +54,7 @@ func GetAuthToken(token, hostname string) string {
 type Getter interface {
 	CreateOrgLevelRuleset(owner string, data io.Reader) error
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error
-	CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset
+	CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
@@ -71,15 +72,18 @@ type Getter interface {
 	GetReposList(owner string, endCursor *string) (*data.ReposQuery, error)
 	GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error)
 	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
-	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters
+	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters
 	ParametersToMap(params data.Parameters, ruleType string) map[string]string
-	ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor
-	ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows
+	ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor
+	ParseRequiredWorkflowsForImport(owner string, value interface{}, repoMapping map[string]string) []data.Workflows
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
-	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
-	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
+	UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error
+	UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error
+	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter, repoMapping map[string]string) data.RepoRuleset
+	UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
 
 type APIGetter struct {
@@ -113,6 +117,36 @@ func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) err
 	url := fmt.Sprintf("repos/%s/rulesets", ownerRepo)
 
 	resp, err := g.restClient.Request("POST", url, data)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			zap.S().Errorf("Error closing response body: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (g *APIGetter) UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error {
+	url := fmt.Sprintf("orgs/%s/rulesets/%s", owner, strconv.Itoa(rulesetId))
+
+	resp, err := g.restClient.Request("PUT", url, data)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			zap.S().Errorf("Error closing response body: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (g *APIGetter) UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error {
+	url := fmt.Sprintf("repos/%s/rulesets/%s", ownerRepo, strconv.Itoa(rulesetId))
+
+	resp, err := g.restClient.Request("PUT", url, data)
 	if err != nil {
 		return err
 	}
@@ -277,7 +311,6 @@ func (g *APIGetter) GetAppInstallations(owner string) (*data.AppIntegrations, er
 }
 
 func getNextPageURL(linkHeader string) string {
-	const prefix = "https://api.github.com/"
 	links := strings.Split(linkHeader, ",")
 	for _, link := range links {
 		parts := strings.Split(strings.TrimSpace(link), ";")
@@ -287,7 +320,19 @@ func getNextPageURL(linkHeader string) string {
 		urlPart := strings.Trim(parts[0], "<>")
 		relPart := strings.TrimSpace(parts[1])
 		if relPart == `rel="next"` {
-			return strings.TrimPrefix(urlPart, prefix)
+			u, err := url.Parse(urlPart)
+			if err != nil {
+				return ""
+			}
+			path := u.Path
+			if path == "/api/v3" || strings.HasPrefix(path, "/api/v3/") {
+				path = strings.TrimPrefix(path, "/api/v3")
+			}
+			path = strings.TrimPrefix(path, "/")
+			if u.RawQuery != "" {
+				path = fmt.Sprintf("%s?%s", path, u.RawQuery)
+			}
+			return path
 		}
 	}
 	return ""

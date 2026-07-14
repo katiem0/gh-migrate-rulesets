@@ -39,7 +39,7 @@ func (m *MockAPIGetter) RepoExists(ownerRepo string) bool {
 	return m.RepoExistsResult
 }
 
-func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset {
 	return []data.RepoRuleset{
 		{
 			ID:           1,
@@ -169,7 +169,7 @@ func (m *MockAPIGetter) GetTeamByName(owner string, teamSlug string) (*data.Team
 	return &data.TeamInfo{}, nil
 }
 
-func (m *MockAPIGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters {
+func (m *MockAPIGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters {
 	return &data.Parameters{}
 }
 
@@ -177,11 +177,11 @@ func (m *MockAPIGetter) ParametersToMap(params data.Parameters, ruleType string)
 	return map[string]string{}
 }
 
-func (m *MockAPIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (m *MockAPIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	return []data.BypassActor{}
 }
 
-func (m *MockAPIGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows {
+func (m *MockAPIGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}, repoMapping map[string]string) []data.Workflows {
 	return []data.Workflows{}
 }
 
@@ -193,11 +193,29 @@ func (m *MockAPIGetter) ProcessRules(rules []data.Rules) map[string]string {
 	return map[string]string{}
 }
 
-func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
+func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter, actorMapping map[string]int) data.RepoRuleset {
 	return ruleset
 }
 
-func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
+func (m *MockAPIGetter) UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error {
+	if m.ShouldError {
+		return errors.New("mock error updating org ruleset")
+	}
+	return nil
+}
+
+func (m *MockAPIGetter) UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error {
+	if m.ShouldError {
+		return errors.New("mock error updating repo ruleset")
+	}
+	return nil
+}
+
+func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter, repoMapping map[string]string) data.RepoRuleset {
+	return ruleset
+}
+
+func (m *MockAPIGetter) UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
 	return ruleset
 }
 
@@ -247,6 +265,12 @@ func TestNewCmdCreate(t *testing.T) {
 	if !strings.Contains(cmd.Short, "Create repository rulesets") {
 		t.Errorf("NewCmdCreate() Short description incorrect")
 	}
+
+	for _, flagName := range []string{"repo-mapping", "actor-mapping", "dry-run"} {
+		if cmd.Flags().Lookup(flagName) == nil {
+			t.Errorf("NewCmdCreate() missing flag %q", flagName)
+		}
+	}
 }
 
 func TestCmdCreate_PreRunE(t *testing.T) {
@@ -267,6 +291,18 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 			args:       []string{"--from-file", "test.csv", "--source-org", "testorg"},
 			wantErr:    true,
 			errMessage: "specify only one of",
+		},
+		{
+			name:       "missing actor mapping file",
+			args:       []string{"--from-file", "test.csv", "--actor-mapping", "does-not-exist.csv"},
+			wantErr:    true,
+			errMessage: "actor mapping file not found",
+		},
+		{
+			name:       "missing repo mapping file",
+			args:       []string{"--from-file", "test.csv", "--repo-mapping", "does-not-exist.csv"},
+			wantErr:    true,
+			errMessage: "repo mapping file not found",
 		},
 	}
 

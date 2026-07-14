@@ -155,7 +155,7 @@ func GetValidFields(ruleType string) map[string]map[string]struct{} {
 	return validFields[ruleType]
 }
 
-func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters {
+func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters {
 	var params data.Parameters
 	validFields := GetValidFields(ruleType)
 	if validFields == nil {
@@ -182,7 +182,7 @@ func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface
 		switch field.Kind() {
 		case reflect.Slice:
 			if field.Type() == workflowsType {
-				parsedValue := g.ParseRequiredWorkflowsForImport(owner, value)
+				parsedValue := g.ParseRequiredWorkflowsForImport(owner, value, repoMapping)
 				if len(parsedValue) > 0 {
 					field.Set(reflect.ValueOf(parsedValue))
 				}
