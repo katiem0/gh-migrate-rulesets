@@ -145,6 +145,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 								continue
 							} else {
 								ruleset.BypassActors[i].ActorID = &appIntegrationInfo.AppID
+								break
 							}
 						}
 					}

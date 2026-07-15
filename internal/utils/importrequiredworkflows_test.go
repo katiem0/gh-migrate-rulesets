@@ -9,10 +9,12 @@ import (
 )
 
 type MockWorkflowGetter struct {
-	ShouldError      bool
-	RepoExistsResult bool
-	RepoInfo         *data.RepoSingleQuery
-	RepoByIDInfo     *data.RepoInfo
+	ShouldError         bool
+	RepoExistsResult    bool
+	RepoInfo            *data.RepoSingleQuery
+	RepoByIDInfo        *data.RepoInfo
+	AppInstallations    *data.AppIntegrations
+	AppInstallationsErr bool
 }
 
 func (m *MockWorkflowGetter) GetRepo(owner string, name string) (*data.RepoSingleQuery, error) {
@@ -130,7 +132,10 @@ func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset 
 }
 
 func (m *MockWorkflowGetter) GetAppInstallations(owner string) (*data.AppIntegrations, error) {
-	return nil, nil
+	if m.AppInstallationsErr {
+		return nil, errors.New("mock error getting app installations")
+	}
+	return m.AppInstallations, nil
 }
 
 func (m *MockWorkflowGetter) GetCustomRoles(owner string, roleID int) (*data.CustomRole, error) {
