@@ -313,8 +313,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							exists := g.RepoExists(newSource)
 							if !exists {
 								zap.S().Debugf("Repository %s does not exist in %s", targetRepoName, owner)
-								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: repoLevelRuleset.Source, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
-								zap.S().Infof("Error creating ruleset %s for %s: %s", repoLevelRuleset.Source, createRuleset.Name, "Repository does not exist")
+								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: newSource, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
+								zap.S().Infof("Error creating ruleset %s for %s: %s", createRuleset.Name, newSource, "Repository does not exist")
 								continue
 							} else {
 								if cmdFlags.dryRun {
@@ -328,8 +328,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 									} else {
 										errorValidation = err.Error()
 									}
-									errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: repoLevelRuleset.Source, RulesetName: createRuleset.Name, Error: errorValidation})
-									zap.S().Infof("Error creating ruleset %s for %s: %s", repoLevelRuleset.Source, createRuleset.Name, errorValidation)
+									errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: newSource, RulesetName: createRuleset.Name, Error: errorValidation})
+									zap.S().Infof("Error creating ruleset %s for %s: %s", createRuleset.Name, newSource, errorValidation)
 									continue
 								}
 							}

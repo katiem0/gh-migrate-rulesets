@@ -569,9 +569,12 @@ func (g *APIGetter) RepoExists(ownerRepo string) bool {
 	url := fmt.Sprintf("repos/%s", ownerRepo)
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
+		// Only a 404 means the repo genuinely does not exist; surface other errors
+		// (e.g. 401/403 auth or wrong hostname) so they aren't masked as "not found".
 		if resp != nil && resp.StatusCode == 404 {
 			return false
 		}
+		zap.S().Errorf("Unable to verify repository %s exists: %v", ownerRepo, err)
 		return false
 	}
 	defer func() {
