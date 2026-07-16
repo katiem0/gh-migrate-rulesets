@@ -129,6 +129,12 @@ The output `csv` file contains the following information:
 </details>
 <!-- markdownlint-enable MD013 -->
 
+> [!NOTE]
+> Fields within multi-value columns (e.g. `RulesBranchNamePattern`, `RulesCommitMessagePattern`)
+> are written in a stable, alphabetically-sorted order. This keeps exports deterministic so
+> re-running `list` produces byte-identical output for unchanged rulesets, making before/after
+> diffs reliable.
+
 ### Create Repository Rulesets
 
 Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined
@@ -189,6 +195,16 @@ based on name to the new ID under the target organization:
 - Required Workflow
   - Repository
 
+When the command finishes it logs a summary of how many rulesets were created successfully and how
+many failed, for example:
+
+```text
+Summary: 12 ruleset(s) created successfully, 2 failed
+```
+
 > [!NOTE]
-> If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv`
-> file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
+> Any ruleset that fails to be created is captured and written to a `csv` file in the current
+> directory with the name format `<org>-ruleset-errors-<date>.csv`, containing the `Source`,
+> `RulesetName`, and `Error`. This includes per-ruleset creation failures as well as failures to
+> fetch organization or repository rulesets from the source (recorded with a `RulesetName` of
+> `N/A`), so all issues are available for easy review.
