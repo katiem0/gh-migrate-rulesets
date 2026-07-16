@@ -85,7 +85,8 @@ The output `csv` file contains the following information:
 <table>
 <tr><th>Field Name</th><th>Description</th></tr>
 <tr><td><code>RulesetLevel</code></td><td>Indicates whether the ruleset is at the organization or repository level.</td></tr>
-<tr><td><code>RepositoryName</code></td><td>If repository level ruleset, the name of the repository where the data is extracted from. For Organization rulesets, this is <code>N/A</code>.</td></tr>
+<tr><td><code>SourceRepositoryName</code></td><td>If repository level ruleset, the name of the repository where the data is extracted from. For Organization rulesets, this is <code>N/A</code>.</td></tr>
+<tr><td><code>TargetRepositoryName</code></td><td>The destination repository name used when creating rulesets with <code>--from-file</code>. Defaults to the same value as <code>SourceRepositoryName</code> on export; edit this column to rename the destination repository during a <code>--from-file</code> migration. For Organization rulesets, this is <code>N/A</code>.</td></tr>
 <tr><td><code>RuleID</code></td><td>Unique identifier for the rule.</td></tr>
 <tr><td><code>RulesetName</code></td><td>Name of the ruleset.</td></tr>
 <tr><td><code>Target</code></td><td>Indicates the type of ruleset, can be <code>branch</code>, <code>tag</code>, or <code>push</code>.</td></tr>
@@ -129,6 +130,12 @@ The output `csv` file contains the following information:
 </details>
 <!-- markdownlint-enable MD013 -->
 
+> [!NOTE]
+> Fields within multi-value columns (e.g. `RulesBranchNamePattern`, `RulesCommitMessagePattern`)
+> are written in a stable, alphabetically-sorted order. This keeps exports deterministic so
+> re-running `list` produces byte-identical output for unchanged rulesets, making before/after
+> diffs reliable.
+
 ### Create Repository Rulesets
 
 Repository Rulesets can be created from a `csv` file using `--from-file` following the format outlined
@@ -162,8 +169,27 @@ Flags:
       --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
   -s, --source-org string        Name of the Source Organization to copy rulesets from
   -p, --source-pat string        GitHub personal access token for Source Organization (default "gh auth token")
+  -T, --target-repo string       Rename the destination repository when migrating a single repository's rulesets
   -t, --token string             GitHub personal access token for organization to write to (default "gh auth token")
 ```
+
+When migrating a **single repository** with `--source-org`, use `--target-repo` to create the
+rulesets under a different repository name (a repository rename). This is useful when the
+destination repository has been renamed relative to the source. `--target-repo` requires exactly
+one repository via `--repos` and cannot be combined with `--from-file` (a file already contains the
+destination repository name).
+
+```sh
+# Rename during a single-repo migration from a source organization
+$ gh migrate-rulesets create target-org --source-org source-org --repos old-repo --target-repo new-repo
+```
+
+When creating rulesets with `--from-file`, repository renames are driven by the CSV itself. Each
+repository-level row carries both a `SourceRepositoryName` and a `TargetRepositoryName` column. On
+export these values are identical; edit `TargetRepositoryName` to create the ruleset under a
+different destination repository. If `TargetRepositoryName` is empty, the destination defaults to
+`SourceRepositoryName`. Files exported by earlier versions that only contain a `RepositoryName`
+column remain supported and are treated as the source (and target) repository name.
 
 If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to map the object
 based on name to the new ID under the target organization:
@@ -177,6 +203,19 @@ based on name to the new ID under the target organization:
 - Required Workflow
   - Repository
 
+When the command finishes it logs a summary of how many rulesets were created successfully and how
+many failed, for example:
+
+```text
+Summary: 12 ruleset(s) created successfully, 2 failed
+```
+
 > [!NOTE]
-> If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv`
-> file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
+> Any ruleset that fails to be created is captured and written to a `csv` file in the current
+> directory with the name format `<org>-ruleset-errors-<date>.csv`, containing the `Source`,
+> `RulesetName`, and `Error`. `Source` is where creation was attempted: for repository-level
+> rulesets it is in `org/repo` format (reflecting any `--target-repo` or `TargetRepositoryName`
+> rename), and for organization-level rulesets it is the organization name. This includes
+> per-ruleset creation failures as well as failures to fetch organization or repository rulesets
+> from the source (recorded with a `RulesetName` of `N/A`), so all issues are available for easy
+> review.

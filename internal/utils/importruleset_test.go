@@ -555,13 +555,13 @@ func TestParseRules(t *testing.T) {
 func TestCreateRepoRulesetsData(t *testing.T) {
 	g := &APIGetter{}
 	header := []string{
-		"RulesetLevel", "RepositoryName", "RuleID", "RulesetName", "Target", "Enforcement", "BypassActors",
+		"RulesetLevel", "SourceRepositoryName", "TargetRepositoryName", "RuleID", "RulesetName", "Target", "Enforcement", "BypassActors",
 		"ConditionsRefNameInclude", "ConditionsRefNameExclude", "ConditionsRepoNameInclude",
 		"ConditionsRepoNameExclude", "ConditionsRepoNameProtected", "ConditionRepoPropertyInclude",
 		"ConditionRepoPropertyExclude", "RulesPullRequest", "CreatedAt", "UpdatedAt",
 	}
 	row := []string{
-		"Organization", "N/A", "1", "test-ruleset", "branch", "active", "",
+		"Organization", "N/A", "N/A", "1", "test-ruleset", "branch", "active", "",
 		"main", "", "", "", "false", "", "",
 		"DismissStaleReviewsOnPush:true|RequiredApprovingReviewCount:2",
 		"2023-01-01T00:00:00Z", "2023-01-02T00:00:00Z",
@@ -581,5 +581,63 @@ func TestCreateRepoRulesetsData(t *testing.T) {
 	}
 	if len(rs.Rules) != 1 || rs.Rules[0].Type != "pull_request" {
 		t.Errorf("CreateRepoRulesetsData() Rules = %+v, want one pull_request rule", rs.Rules)
+	}
+}
+
+func TestCreateRepoRulesetsData_TargetRepositoryRename(t *testing.T) {
+	g := &APIGetter{}
+	header := []string{
+		"RulesetLevel", "SourceRepositoryName", "TargetRepositoryName", "RuleID", "RulesetName", "Target", "Enforcement", "BypassActors",
+		"ConditionsRefNameInclude", "ConditionsRefNameExclude", "ConditionsRepoNameInclude",
+		"ConditionsRepoNameExclude", "ConditionsRepoNameProtected", "ConditionRepoPropertyInclude",
+		"ConditionRepoPropertyExclude", "RulesPullRequest", "CreatedAt", "UpdatedAt",
+	}
+	row := []string{
+		"Repository", "old-repo", "new-repo", "2", "repo-ruleset", "branch", "active", "",
+		"main", "", "", "", "false", "", "",
+		"",
+		"2023-01-01T00:00:00Z", "2023-01-02T00:00:00Z",
+	}
+	fileData := [][]string{header, row}
+
+	got := g.CreateRepoRulesetsData("testorg", fileData)
+	if len(got) != 1 {
+		t.Fatalf("CreateRepoRulesetsData() returned %d rulesets, want 1", len(got))
+	}
+	rs := got[0]
+	if rs.Source != "testorg/old-repo" {
+		t.Errorf("CreateRepoRulesetsData() Source = %q, want testorg/old-repo", rs.Source)
+	}
+	if rs.TargetSource != "testorg/new-repo" {
+		t.Errorf("CreateRepoRulesetsData() TargetSource = %q, want testorg/new-repo", rs.TargetSource)
+	}
+}
+
+func TestCreateRepoRulesetsData_LegacyRepositoryNameHeader(t *testing.T) {
+	g := &APIGetter{}
+	header := []string{
+		"RulesetLevel", "RepositoryName", "RuleID", "RulesetName", "Target", "Enforcement", "BypassActors",
+		"ConditionsRefNameInclude", "ConditionsRefNameExclude", "ConditionsRepoNameInclude",
+		"ConditionsRepoNameExclude", "ConditionsRepoNameProtected", "ConditionRepoPropertyInclude",
+		"ConditionRepoPropertyExclude", "RulesPullRequest", "CreatedAt", "UpdatedAt",
+	}
+	row := []string{
+		"Repository", "legacy-repo", "3", "repo-ruleset", "branch", "active", "",
+		"main", "", "", "", "false", "", "",
+		"",
+		"2023-01-01T00:00:00Z", "2023-01-02T00:00:00Z",
+	}
+	fileData := [][]string{header, row}
+
+	got := g.CreateRepoRulesetsData("testorg", fileData)
+	if len(got) != 1 {
+		t.Fatalf("CreateRepoRulesetsData() returned %d rulesets, want 1", len(got))
+	}
+	rs := got[0]
+	if rs.Source != "testorg/legacy-repo" {
+		t.Errorf("CreateRepoRulesetsData() Source = %q, want testorg/legacy-repo", rs.Source)
+	}
+	if rs.TargetSource != "testorg/legacy-repo" {
+		t.Errorf("CreateRepoRulesetsData() TargetSource = %q, want testorg/legacy-repo (defaults to source)", rs.TargetSource)
 	}
 }

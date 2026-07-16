@@ -25,6 +25,7 @@ type cmdFlags struct {
 	hostname       string
 	fileName       string
 	repos          []string
+	targetRepo     string
 	ruleType       string
 	debug          bool
 }
@@ -42,7 +43,15 @@ func NewCmdCreate() *cobra.Command {
 			if len(cmdFlags.fileName) == 0 && len(cmdFlags.sourceOrg) == 0 {
 				return errors.New("a file or source organization must be specified where rulesets will be created from")
 			} else if len(cmdFlags.fileName) > 0 && len(cmdFlags.sourceOrg) > 0 {
-				return errors.New("specify only one of `--source-organization` or `from-file`")
+				return errors.New("specify only one of `--source-org` or `--from-file`")
+			}
+			if len(cmdFlags.targetRepo) > 0 {
+				if len(cmdFlags.fileName) > 0 {
+					return errors.New("`--target-repo` cannot be used with `--from-file`; the file already contains the destination repository name")
+				}
+				if len(cmdFlags.repos) != 1 {
+					return errors.New("`--target-repo` requires exactly one repository via `--repos`")
+				}
 			}
 			return nil
 		},
@@ -76,6 +85,7 @@ func NewCmdCreate() *cobra.Command {
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "source-hostname", "", "github.com", "GitHub Enterprise Server hostname where rulesets are copied from")
 	createCmd.Flags().StringVarP(&cmdFlags.fileName, "from-file", "f", "", "Path and Name of CSV file to create rulesets from")
 	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)")
+	createCmd.Flags().StringVarP(&cmdFlags.targetRepo, "target-repo", "T", "", "Rename the destination repository when migrating a single repository's rulesets")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
 	createCmd.PersistentFlags().BoolVarP(&cmdFlags.debug, "debug", "d", false, "To debug logging")
 
@@ -90,6 +100,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 	var sourceOrgID int
 	var importRepoRulesetsList []data.RepoRuleset
 	var errorRulesets []data.ErrorRulesets
+	successCount := 0
 
 	zap.S().Infof("Reading in file %s to identify repository rulesets", cmdFlags.fileName)
 	if len(cmdFlags.fileName) > 0 {
@@ -147,28 +158,37 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 						return nil
 					}
 					zap.S().Infof("Successfully create repository ruleset %s for %s", ruleset.Name, owner)
+					successCount++
 				case "Repository":
-					zap.S().Debugf("Trying to create repository rulesets under %s", ruleset.Source)
-					exists := g.RepoExists(ruleset.Source)
+					destSource := ruleset.Source
+					if ruleset.TargetSource != "" {
+						destSource = ruleset.TargetSource
+					}
+					if destSource != ruleset.Source {
+						zap.S().Infof("Migrating rulesets from %s to %s", ruleset.Source, destSource)
+					}
+					zap.S().Debugf("Trying to create repository rulesets under %s", destSource)
+					exists := g.RepoExists(destSource)
 					if !exists {
-						zap.S().Debugf("Repository %s does not exist", ruleset.Source)
-						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: ruleset.Source, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
-						zap.S().Infof("Error creating ruleset %s for %s: %s", ruleset.Source, createRuleset.Name, "Repository does not exist")
+						zap.S().Debugf("Repository %s does not exist", destSource)
+						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: destSource, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
+						zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, destSource, ruleset.Source, "Repository does not exist")
 						return nil
 					}
-					zap.S().Debugf("Creating rulesets under %s", ruleset.Source)
-					err = g.CreateRepoLevelRuleset(ruleset.Source, reader)
+					zap.S().Debugf("Creating rulesets under %s", destSource)
+					err = g.CreateRepoLevelRuleset(destSource, reader)
 					if err != nil {
 						if strings.Contains(err.Error(), "\n") {
 							errorValidation = strings.Split(err.Error(), "\n")[1]
 						} else {
 							errorValidation = err.Error()
 						}
-						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: ruleset.Source, RulesetName: createRuleset.Name, Error: errorValidation})
-						zap.S().Infof("Error creating ruleset %s for %s: %s", ruleset.Source, createRuleset.Name, errorValidation)
+						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: destSource, RulesetName: createRuleset.Name, Error: errorValidation})
+						zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, destSource, ruleset.Source, errorValidation)
 						return nil
 					}
-					zap.S().Infof("Successfully create repository ruleset %s for %s", ruleset.Name, ruleset.Source)
+					zap.S().Infof("Successfully create repository ruleset %s for %s", ruleset.Name, destSource)
+					successCount++
 				}
 				return nil
 			}, fmt.Sprintf("creating ruleset %s for %s", ruleset.Name, ruleset.Source))
@@ -192,6 +212,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 				allOrgRules, err := s.FetchOrgRulesets(sourceOrg)
 				if err != nil {
 					zap.S().Errorf("Error raised in fetching org ruleset data for %s", sourceOrg)
+					errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: sourceOrg, RulesetName: "N/A", Error: fmt.Sprintf("failed to fetch organization rulesets: %v", err)})
 				}
 				for _, singleRule := range allOrgRules {
 					execErr := utils.SafeExecute(func() error {
@@ -236,6 +257,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							zap.S().Infof("Error creating ruleset %s for %s: %s", sourceOrg, createRuleset.Name, errorValidation)
 							return nil
 						}
+						zap.S().Infof("Successfully created organization ruleset %s for %s", createRuleset.Name, owner)
+						successCount++
 						return nil
 					}, fmt.Sprintf("creating org ruleset %s", singleRule.Name))
 					if execErr != nil {
@@ -252,7 +275,8 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 					allRepoRules, err := g.FetchRepoRulesets(sourceOrg, allRepos)
 					if err != nil {
 						zap.S().Error("Error raised in fetching repo ruleset data", zap.Error(err))
-						return err
+						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: sourceOrg, RulesetName: "N/A", Error: fmt.Sprintf("failed to fetch repository rulesets: %v", err)})
+						allRepoRules = nil
 					}
 					for _, singleRepoRule := range allRepoRules {
 						execErr := utils.SafeExecute(func() error {
@@ -293,13 +317,17 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 								return nil
 							}
 							repoName := sourceParts[1]
+							if len(cmdFlags.targetRepo) > 0 {
+								zap.S().Infof("Migrating rulesets from %s to %s", repoName, cmdFlags.targetRepo)
+								repoName = cmdFlags.targetRepo
+							}
 							zap.S().Debugf("Creating rulesets under %s/%s", owner, repoName)
 							newSource := fmt.Sprintf("%s/%s", owner, repoName)
 							exists := g.RepoExists(newSource)
 							if !exists {
 								zap.S().Debugf("Repository %s does not exist in %s", repoName, owner)
-								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: repoLevelRuleset.Source, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
-								zap.S().Infof("Error creating ruleset %s for %s: %s", repoLevelRuleset.Source, createRuleset.Name, "Repository does not exist")
+								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: newSource, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
+								zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, newSource, repoLevelRuleset.Source, "Repository does not exist")
 								return nil
 							}
 							err = g.CreateRepoLevelRuleset(newSource, reader)
@@ -309,11 +337,12 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 								} else {
 									errorValidation = err.Error()
 								}
-								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: repoLevelRuleset.Source, RulesetName: createRuleset.Name, Error: errorValidation})
-								zap.S().Infof("Error creating ruleset %s for %s: %s", repoLevelRuleset.Source, createRuleset.Name, errorValidation)
+								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: newSource, RulesetName: createRuleset.Name, Error: errorValidation})
+								zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, newSource, repoLevelRuleset.Source, errorValidation)
 								return nil
 							}
 							zap.S().Infof("Successfully created repository ruleset %s for %s", singleRepoRule.Rule.Name, newSource)
+							successCount++
 							return nil
 						}, fmt.Sprintf("creating repo ruleset %s for %s", singleRepoRule.Rule.Name, singleRepoRule.RepoName))
 						if execErr != nil {
@@ -343,5 +372,6 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 	} else {
 		zap.S().Infof("Completed list of rulesets in org %s", owner)
 	}
+	zap.S().Infof("Summary: %d ruleset(s) created successfully, %d failed", successCount, len(errorRulesets))
 	return nil
 }

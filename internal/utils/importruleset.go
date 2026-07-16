@@ -24,7 +24,9 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		repoRuleset.Name = each[headerMap["RulesetName"]]
 		repoRuleset.Target = each[headerMap["Target"]]
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
-		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
+		sourceRepo, targetRepo := repoNamesFromRow(each, headerMap)
+		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], sourceRepo)
+		repoRuleset.TargetSource = determineSource(owner, each[headerMap["RulesetLevel"]], targetRepo)
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
 		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]])
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
@@ -41,6 +43,25 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		importRepoRuleset = append(importRepoRuleset, repoRuleset)
 	}
 	return importRepoRuleset
+}
+
+// repoNamesFromRow returns the source and target repository names for a CSV row.
+// It reads SourceRepositoryName (falling back to the legacy RepositoryName header
+// for backward compatibility) and TargetRepositoryName. When TargetRepositoryName
+// is missing or empty, the target defaults to the source repository name.
+func repoNamesFromRow(each []string, headerMap map[string]int) (source, target string) {
+	sourceIdx, ok := headerMap["SourceRepositoryName"]
+	if !ok {
+		sourceIdx, ok = headerMap["RepositoryName"]
+	}
+	if ok && sourceIdx < len(each) {
+		source = each[sourceIdx]
+	}
+	target = source
+	if idx, ok := headerMap["TargetRepositoryName"]; ok && idx < len(each) && each[idx] != "" {
+		target = each[idx]
+	}
+	return source, target
 }
 
 func determineSource(owner, sourceType, repoName string) string {
