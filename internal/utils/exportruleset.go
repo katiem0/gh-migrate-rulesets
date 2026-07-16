@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -128,9 +129,14 @@ func (g *APIGetter) ProcessRules(rules []data.Rules) map[string]string {
 			rulesMap[rule.Type] = "true"
 		} else {
 			parametersMap := g.ParametersToMap(*rule.Parameters, rule.Type)
+			keys := make([]string, 0, len(parametersMap))
+			for key := range parametersMap {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
 			var formattedParams []string
-			for key, value := range parametersMap {
-				formattedParams = append(formattedParams, fmt.Sprintf("%s:%v", key, value))
+			for _, key := range keys {
+				formattedParams = append(formattedParams, fmt.Sprintf("%s:%v", key, parametersMap[key]))
 			}
 			if len(formattedParams) > 0 {
 				rulesMap[rule.Type] = strings.Join(formattedParams, "|")

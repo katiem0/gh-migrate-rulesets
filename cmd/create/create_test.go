@@ -13,12 +13,15 @@ import (
 )
 
 type MockAPIGetter struct {
-	ShouldError      bool
-	RepoExistsResult bool
-	OrgRulesets      []data.Rulesets
-	RepoRulesets     []data.RepoNameRule
-	Repos            []data.RepoInfo
-	OrgID            int
+	ShouldError            bool
+	RepoExistsResult       bool
+	OrgRulesets            []data.Rulesets
+	RepoRulesets           []data.RepoNameRule
+	Repos                  []data.RepoInfo
+	OrgID                  int
+	CreatedRepoSources     []string
+	FetchOrgRulesetsError  bool
+	FetchRepoRulesetsError bool
 }
 
 func (m *MockAPIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
@@ -29,6 +32,7 @@ func (m *MockAPIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) erro
 }
 
 func (m *MockAPIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error {
+	m.CreatedRepoSources = append(m.CreatedRepoSources, ownerRepo)
 	if m.ShouldError {
 		return errors.New("mock error creating repo ruleset")
 	}
@@ -80,14 +84,14 @@ func (m *MockAPIGetter) FetchOrgId(owner string) (*data.OrgIdQuery, error) {
 }
 
 func (m *MockAPIGetter) FetchOrgRulesets(owner string) ([]data.Rulesets, error) {
-	if m.ShouldError {
+	if m.ShouldError || m.FetchOrgRulesetsError {
 		return nil, errors.New("mock error fetching org rulesets")
 	}
 	return m.OrgRulesets, nil
 }
 
 func (m *MockAPIGetter) FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error) {
-	if m.ShouldError {
+	if m.ShouldError || m.FetchRepoRulesetsError {
 		return nil, errors.New("mock error fetching repo rulesets")
 	}
 	return m.RepoRulesets, nil
@@ -268,6 +272,24 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 			wantErr:    true,
 			errMessage: "specify only one of",
 		},
+		{
+			name:       "target-repo with multiple repos",
+			args:       []string{"--source-org", "testorg", "--repos", "repo1,repo2", "--target-repo", "renamed"},
+			wantErr:    true,
+			errMessage: "requires exactly one repository",
+		},
+		{
+			name:       "target-repo with source-org but no repos",
+			args:       []string{"--source-org", "testorg", "--target-repo", "renamed"},
+			wantErr:    true,
+			errMessage: "requires exactly one repository",
+		},
+		{
+			name:       "target-repo with from-file",
+			args:       []string{"--from-file", "test.csv", "--target-repo", "renamed"},
+			wantErr:    true,
+			errMessage: "cannot be used with `--from-file`",
+		},
 	}
 
 	for _, tt := range tests {
@@ -416,5 +438,104 @@ func TestRunCmdCreate_FromSourceOrg(t *testing.T) {
 				t.Errorf("runCmdCreate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRunCmdCreate_FromSourceOrg_TargetRepoRename(t *testing.T) {
+	mockGetter := &MockAPIGetter{
+		RepoExistsResult: true,
+		Repos:            []data.RepoInfo{{DatabaseId: 10, Name: "repo1"}},
+		RepoRulesets: []data.RepoNameRule{
+			{RepoName: "repo1", Rule: data.Rulesets{ID: "R_2", DatabaseID: 2, Name: "repo-ruleset"}},
+		},
+	}
+	mockSource := &MockAPIGetter{OrgID: 123}
+
+	flags := &cmdFlags{
+		sourceOrg:  "source-org",
+		ruleType:   "repoOnly",
+		repos:      []string{"repo1"},
+		targetRepo: "renamed-repo",
+	}
+
+	if err := runCmdCreate("target-org", flags, mockGetter, mockSource); err != nil {
+		t.Fatalf("runCmdCreate() unexpected error = %v", err)
+	}
+
+	want := "target-org/renamed-repo"
+	found := false
+	for _, source := range mockGetter.CreatedRepoSources {
+		if source == want {
+			found = true
+		}
+		if source == "target-org/repo1" {
+			t.Errorf("repo-level ruleset created against original repo %q, expected rename to %q", source, want)
+		}
+	}
+	if !found {
+		t.Errorf("expected repo-level ruleset created against %q, got %v", want, mockGetter.CreatedRepoSources)
+	}
+}
+
+// readErrorCSV finds and reads the most recent error CSV written for owner in cwd.
+func readErrorCSV(t *testing.T, owner string) string {
+	t.Helper()
+	matches, err := filepath.Glob(owner + "-ruleset-errors-*.csv")
+	if err != nil {
+		t.Fatalf("glob error: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("expected an error CSV file for owner %q, none found", owner)
+	}
+	t.Cleanup(func() {
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	})
+	content, err := os.ReadFile(matches[len(matches)-1])
+	if err != nil {
+		t.Fatalf("failed to read error CSV: %v", err)
+	}
+	return string(content)
+}
+
+func TestRunCmdCreate_FetchOrgRulesetsError_WrittenToCSV(t *testing.T) {
+	mockGetter := &MockAPIGetter{}
+	mockSource := &MockAPIGetter{OrgID: 123, FetchOrgRulesetsError: true}
+
+	flags := &cmdFlags{
+		sourceOrg: "fetch-org-fail",
+		ruleType:  "orgOnly",
+	}
+
+	if err := runCmdCreate("fetch-org-fail", flags, mockGetter, mockSource); err != nil {
+		t.Fatalf("runCmdCreate() unexpected error = %v", err)
+	}
+
+	content := readErrorCSV(t, "fetch-org-fail")
+	if !strings.Contains(content, "failed to fetch organization rulesets") {
+		t.Errorf("error CSV missing org rulesets fetch failure, got:\n%s", content)
+	}
+}
+
+func TestRunCmdCreate_FetchRepoRulesetsError_WrittenToCSV(t *testing.T) {
+	mockGetter := &MockAPIGetter{
+		Repos:                  []data.RepoInfo{{DatabaseId: 10, Name: "repo1"}},
+		FetchRepoRulesetsError: true,
+	}
+	mockSource := &MockAPIGetter{OrgID: 123}
+
+	flags := &cmdFlags{
+		sourceOrg: "fetch-repo-fail",
+		ruleType:  "repoOnly",
+	}
+
+	if err := runCmdCreate("fetch-repo-fail", flags, mockGetter, mockSource); err != nil {
+		t.Fatalf("runCmdCreate() unexpected error = %v", err)
+	}
+
+	content := readErrorCSV(t, "fetch-repo-fail")
+	if !strings.Contains(content, "failed to fetch repository rulesets") {
+		t.Errorf("error CSV missing repo rulesets fetch failure, got:\n%s", content)
 	}
 }

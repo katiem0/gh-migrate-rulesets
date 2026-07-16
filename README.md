@@ -162,7 +162,19 @@ Flags:
       --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
   -s, --source-org string        Name of the Source Organization to copy rulesets from
   -p, --source-pat string        GitHub personal access token for Source Organization (default "gh auth token")
+  -T, --target-repo string       Rename the destination repository when migrating a single repository's rulesets
   -t, --token string             GitHub personal access token for organization to write to (default "gh auth token")
+```
+
+When migrating a **single repository** with `--source-org`, use `--target-repo` to create the
+rulesets under a different repository name (a repository rename). This is useful when the
+destination repository has been renamed relative to the source. `--target-repo` requires exactly
+one repository via `--repos` and cannot be combined with `--from-file` (a file already contains the
+destination repository name).
+
+```sh
+# Rename during a single-repo migration from a source organization
+$ gh migrate-rulesets create target-org --source-org source-org --repos old-repo --target-repo new-repo
 ```
 
 If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to map the object
