@@ -194,6 +194,13 @@ func TestWriteErrorRulesetsToCSV(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "error with repo-level source",
+			errorRulesets: []data.ErrorRulesets{
+				{Source: "target-org/new-repo", RulesetName: "rename-ruleset", Error: "Repository does not exist"},
+			},
+			wantErr: false,
+		},
+		{
 			name:          "empty error list",
 			errorRulesets: []data.ErrorRulesets{},
 			wantErr:       false,
@@ -234,6 +241,9 @@ func TestWriteErrorRulesetsToCSV(t *testing.T) {
 				for _, errorRuleset := range tt.errorRulesets {
 					if !strings.Contains(contentStr, errorRuleset.RulesetName) {
 						t.Errorf("CSV file missing ruleset %s", errorRuleset.RulesetName)
+					}
+					if errorRuleset.RulesetName != "" && !strings.Contains(contentStr, errorRuleset.Source+",") {
+						t.Errorf("CSV file missing Source %q", errorRuleset.Source)
 					}
 				}
 			}

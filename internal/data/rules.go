@@ -55,6 +55,7 @@ type RepoRuleset struct {
 	Target       string        `json:"target"`
 	SourceType   string        `json:"source_type"`
 	Source       string        `json:"source"`
+	TargetSource string        `json:"-"`
 	Enforcement  string        `json:"enforcement"`
 	BypassActors []BypassActor `json:"bypass_actors"`
 	Conditions   *Conditions   `json:"conditions"`

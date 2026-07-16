@@ -22,6 +22,7 @@ type MockAPIGetter struct {
 	CreatedRepoSources     []string
 	FetchOrgRulesetsError  bool
 	FetchRepoRulesetsError bool
+	RepoRulesetsFromFile   []data.RepoRuleset
 }
 
 func (m *MockAPIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
@@ -44,6 +45,9 @@ func (m *MockAPIGetter) RepoExists(ownerRepo string) bool {
 }
 
 func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+	if m.RepoRulesetsFromFile != nil {
+		return m.RepoRulesetsFromFile
+	}
 	return []data.RepoRuleset{
 		{
 			ID:           1,
@@ -311,9 +315,9 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 }
 
 func TestRunCmdCreate_FromFile(t *testing.T) {
-	csvContent := `RulesetLevel,RepositoryName,RuleID,RulesetName,Target,Enforcement,BypassActors,ConditionsRefNameInclude,ConditionsRefNameExclude,ConditionsRepoNameInclude,ConditionsRepoNameExclude,ConditionsRepoNameProtected,ConditionRepoPropertyInclude,ConditionRepoPropertyExclude,RulesCreation,RulesUpdate,RulesDeletion,RulesRequiredLinearHistory,RulesMergeQueue,RulesRequiredDeployments,RulesRequiredSignatures,RulesPullRequest,RulesRequiredStatusChecks,RulesNonFastForward,RulesCommitMessagePattern,RulesCommitAuthorEmailPattern,RulesCommitterEmailPattern,RulesBranchNamePattern,RulesTagNamePattern,RulesFilePathRestriction,RulesFilePathLength,RulesFileExtensionRestriction,RulesMaxFileSize,RulesWorkflows,RulesCodeScanning,CreatedAt,UpdatedAt
-Organization,N/A,1,org-level-ruleset,branch,active,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z
-Repository,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z`
+	csvContent := `RulesetLevel,SourceRepositoryName,TargetRepositoryName,RuleID,RulesetName,Target,Enforcement,BypassActors,ConditionsRefNameInclude,ConditionsRefNameExclude,ConditionsRepoNameInclude,ConditionsRepoNameExclude,ConditionsRepoNameProtected,ConditionRepoPropertyInclude,ConditionRepoPropertyExclude,RulesCreation,RulesUpdate,RulesDeletion,RulesRequiredLinearHistory,RulesMergeQueue,RulesRequiredDeployments,RulesRequiredSignatures,RulesPullRequest,RulesRequiredStatusChecks,RulesNonFastForward,RulesCommitMessagePattern,RulesCommitAuthorEmailPattern,RulesCommitterEmailPattern,RulesBranchNamePattern,RulesTagNamePattern,RulesFilePathRestriction,RulesFilePathLength,RulesFileExtensionRestriction,RulesMaxFileSize,RulesWorkflows,RulesCodeScanning,CreatedAt,UpdatedAt
+Organization,N/A,N/A,1,org-level-ruleset,branch,active,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z
+Repository,test-repo,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,,,,,,,,,,,,,,,,,,,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z`
 
 	tmpFile, err := os.CreateTemp(t.TempDir(), "test-*.csv")
 	if err != nil {
@@ -380,6 +384,57 @@ Repository,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,,,,,,,,,,,
 				t.Errorf("runCmdCreate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRunCmdCreate_FromFile_TargetRepositoryRename(t *testing.T) {
+	csvContent := `RulesetLevel,SourceRepositoryName,TargetRepositoryName,RuleID,RulesetName,Target,Enforcement,RulesPullRequest,CreatedAt,UpdatedAt
+Repository,old-repo,new-repo,2,repo-level-ruleset,branch,active,,2023-01-01T00:00:00Z,2023-01-01T00:00:00Z`
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-*.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tmpFile.Write([]byte(csvContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mockGetter := &MockAPIGetter{
+		RepoExistsResult: true,
+		RepoRulesetsFromFile: []data.RepoRuleset{
+			{
+				ID:           2,
+				Name:         "repo-level-ruleset",
+				Target:       "branch",
+				SourceType:   "Repository",
+				Source:       "testorg/old-repo",
+				TargetSource: "testorg/new-repo",
+				Enforcement:  "active",
+				BypassActors: []data.BypassActor{},
+				Conditions:   &data.Conditions{},
+				Rules:        []data.Rules{{Type: "deletion"}},
+			},
+		},
+	}
+
+	if err := runCmdCreate("testorg", &cmdFlags{fileName: tmpFile.Name()}, mockGetter, mockGetter); err != nil {
+		t.Fatalf("runCmdCreate() error = %v", err)
+	}
+
+	found := false
+	for _, src := range mockGetter.CreatedRepoSources {
+		if src == "testorg/new-repo" {
+			found = true
+		}
+		if src == "testorg/old-repo" {
+			t.Errorf("ruleset was created under source repo testorg/old-repo, expected target testorg/new-repo")
+		}
+	}
+	if !found {
+		t.Errorf("ruleset was not created under target repo testorg/new-repo, got %v", mockGetter.CreatedRepoSources)
 	}
 }
 
@@ -537,5 +592,40 @@ func TestRunCmdCreate_FetchRepoRulesetsError_WrittenToCSV(t *testing.T) {
 	content := readErrorCSV(t, "fetch-repo-fail")
 	if !strings.Contains(content, "failed to fetch repository rulesets") {
 		t.Errorf("error CSV missing repo rulesets fetch failure, got:\n%s", content)
+	}
+}
+
+func TestRunCmdCreate_TargetRepoRename_ErrorRecordsDestination(t *testing.T) {
+	// Target repo does not exist, so creation fails and should be recorded with
+	// the destination repo (org/repo format) where creation was attempted.
+	mockGetter := &MockAPIGetter{
+		RepoExistsResult: false,
+		Repos:            []data.RepoInfo{{DatabaseId: 10, Name: "repo1"}},
+		RepoRulesets: []data.RepoNameRule{
+			{RepoName: "repo1", Rule: data.Rulesets{ID: "R_2", DatabaseID: 2, Name: "repo-ruleset"}},
+		},
+	}
+	mockSource := &MockAPIGetter{OrgID: 123}
+
+	flags := &cmdFlags{
+		sourceOrg:  "rename-fail",
+		ruleType:   "repoOnly",
+		repos:      []string{"repo1"},
+		targetRepo: "new-repo",
+	}
+
+	if err := runCmdCreate("rename-fail", flags, mockGetter, mockSource); err != nil {
+		t.Fatalf("runCmdCreate() unexpected error = %v", err)
+	}
+
+	content := readErrorCSV(t, "rename-fail")
+	if !strings.Contains(content, "Source,RulesetName,Error") {
+		t.Errorf("error CSV missing expected headers, got:\n%s", content)
+	}
+	if !strings.Contains(content, "rename-fail/new-repo,") {
+		t.Errorf("error CSV missing destination repo in Source column, got:\n%s", content)
+	}
+	if !strings.Contains(content, "Repository does not exist") {
+		t.Errorf("error CSV missing failure reason, got:\n%s", content)
 	}
 }

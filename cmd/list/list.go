@@ -137,7 +137,8 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 
 	headers := []string{
 		"RulesetLevel",
-		"RepositoryName",
+		"SourceRepositoryName",
+		"TargetRepositoryName",
 		"RuleID",
 		"RulesetName",
 		"Target",
@@ -207,6 +208,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 					zap.S().Debugf("Writing CSV row for org ruleset: %s", singleRule.Name)
 					row := []string{
 						orgLevelRuleset.SourceType,
+						"N/A",
 						"N/A",
 						strconv.Itoa(orgLevelRuleset.ID),
 						orgLevelRuleset.Name,
@@ -305,6 +307,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 						owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
 					repoRow := []string{
 						repoLevelRuleset.SourceType,
+						singleRepoRule.RepoName,
 						singleRepoRule.RepoName,
 						strconv.Itoa(repoLevelRuleset.ID),
 						repoLevelRuleset.Name,

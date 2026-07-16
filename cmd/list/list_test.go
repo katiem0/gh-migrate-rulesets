@@ -265,6 +265,9 @@ func TestRunCmdList(t *testing.T) {
 					if !strings.Contains(contentStr, "RulesetLevel") {
 						t.Error("Output file missing expected CSV headers")
 					}
+					if !strings.Contains(contentStr, "SourceRepositoryName") || !strings.Contains(contentStr, "TargetRepositoryName") {
+						t.Error("Output file missing SourceRepositoryName/TargetRepositoryName headers")
+					}
 				}
 			}
 
