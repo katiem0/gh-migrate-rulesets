@@ -130,6 +130,11 @@ type Parameters struct {
 	RestrictedFileExtensions         []string       `json:"restricted_file_extensions,omitempty"`
 	MaxFileSize                      int            `json:"max_file_size,omitempty"`
 	CodeScanningTools                []CodeScanning `json:"code_scanning_tools,omitempty"`
+	Severity                         string         `json:"severity,omitempty"`
+	ReviewDraftPullRequests          bool           `json:"review_draft_pull_requests,omitempty"`
+	ReviewOnPush                     bool           `json:"review_on_push,omitempty"`
+	MinimumCoverage                  int            `json:"minimum_coverage,omitempty"`
+	MaxCoverageDrop                  int            `json:"max_coverage_drop,omitempty"`
 }
 
 type StatusChecks struct {

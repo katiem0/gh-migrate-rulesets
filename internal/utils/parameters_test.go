@@ -70,6 +70,34 @@ func TestGetValidFields(t *testing.T) {
 				"RequiredDeploymentEnvironments": {},
 			},
 		},
+		{
+			name:     "code_quality rule type",
+			ruleType: "code_quality",
+			want: map[string]map[string]struct{}{
+				"Severity": {},
+			},
+		},
+		{
+			name:     "copilot_code_review rule type",
+			ruleType: "copilot_code_review",
+			want: map[string]map[string]struct{}{
+				"ReviewDraftPullRequests": {},
+				"ReviewOnPush":            {},
+			},
+		},
+		{
+			name:     "code_coverage rule type",
+			ruleType: "code_coverage",
+			want: map[string]map[string]struct{}{
+				"MinimumCoverage": {},
+				"MaxCoverageDrop": {},
+			},
+		},
+		{
+			name:     "license_compliance_scanning rule type has no parameters",
+			ruleType: "license_compliance_scanning",
+			want:     nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,6 +190,40 @@ func TestParametersToMap(t *testing.T) {
 			ruleType: "code_scanning",
 			want: map[string]string{
 				"CodeScanningTools": "{Tool=CodeQL|SecurityAlertsThreshold=high|AlertsThreshold=high}",
+			},
+		},
+		{
+			name: "code_quality parameters",
+			params: data.Parameters{
+				Severity: "warnings_and_higher",
+			},
+			ruleType: "code_quality",
+			want: map[string]string{
+				"Severity": "warnings_and_higher",
+			},
+		},
+		{
+			name: "copilot_code_review parameters",
+			params: data.Parameters{
+				ReviewDraftPullRequests: true,
+				ReviewOnPush:            false,
+			},
+			ruleType: "copilot_code_review",
+			want: map[string]string{
+				"ReviewDraftPullRequests": "true",
+				"ReviewOnPush":            "false",
+			},
+		},
+		{
+			name: "code_coverage parameters",
+			params: data.Parameters{
+				MinimumCoverage: 80,
+				MaxCoverageDrop: 80,
+			},
+			ruleType: "code_coverage",
+			want: map[string]string{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop": "80",
 			},
 		},
 		{
@@ -335,6 +397,29 @@ func TestParseParameters(t *testing.T) {
 				"MaxFilePathLength": "256",
 			},
 		},
+		{
+			name:     "code_quality severity value",
+			paramStr: "Severity:errors",
+			want: map[string]interface{}{
+				"Severity": "errors",
+			},
+		},
+		{
+			name:     "code_coverage threshold values",
+			paramStr: "MinimumCoverage:80|MaxCoverageDrop:5",
+			want: map[string]interface{}{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop":  "5",
+			},
+		},
+		{
+			name:     "copilot_code_review boolean values",
+			paramStr: "ReviewDraftPullRequests:false|ReviewOnPush:true",
+			want: map[string]interface{}{
+				"ReviewDraftPullRequests": "false",
+				"ReviewOnPush":            "true",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -443,6 +528,56 @@ func TestMapToParameters(t *testing.T) {
 				Negate:   false,
 				Operator: "starts_with",
 				Pattern:  "feat:",
+			},
+		},
+		{
+			name:  "code_quality parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"Severity": "warnings_and_higher",
+			},
+			ruleType: "code_quality",
+			want: &data.Parameters{
+				Severity: "warnings_and_higher",
+			},
+		},
+		{
+			name:  "copilot_code_review parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"ReviewDraftPullRequests": "false",
+				"ReviewOnPush":            "true",
+			},
+			ruleType: "copilot_code_review",
+			want: &data.Parameters{
+				ReviewDraftPullRequests: false,
+				ReviewOnPush:            true,
+			},
+		},
+		{
+			name:  "code_coverage parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop": "5",
+			},
+			ruleType: "code_coverage",
+			want: &data.Parameters{
+				MinimumCoverage: 80,
+				MaxCoverageDrop: 5,
+			},
+		},
+		{
+			name:  "code_coverage parameters with zero values",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"MinimumCoverage": "0",
+				"MaxCoverageDrop": "0",
+			},
+			ruleType: "code_coverage",
+			want: &data.Parameters{
+				MinimumCoverage: 0,
+				MaxCoverageDrop: 0,
 			},
 		},
 	}

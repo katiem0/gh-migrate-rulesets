@@ -36,6 +36,16 @@ type ListGetter interface {
 	ProcessRules(rules []data.Rules) map[string]string
 }
 
+// buildRuleColumns returns the rule values in registry (CSV column) order,
+// keyed by rule type. Empty string is emitted for rule types not present.
+func buildRuleColumns(rulesMap map[string]string) []string {
+	columns := make([]string, 0, len(data.RuleRegistry))
+	for _, spec := range data.RuleRegistry {
+		columns = append(columns, rulesMap[spec.Type])
+	}
+	return columns
+}
+
 func NewCmdList() *cobra.Command {
 	cmdFlags := cmdFlags{}
 	var authToken string
@@ -140,30 +150,9 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 		"ConditionsRepoNameProtected",
 		"ConditionRepoPropertyInclude",
 		"ConditionRepoPropertyExclude",
-		"RulesCreation",
-		"RulesUpdate",
-		"RulesDeletion",
-		"RulesRequiredLinearHistory",
-		"RulesMergeQueue",
-		"RulesRequiredDeployments",
-		"RulesRequiredSignatures",
-		"RulesPullRequest",
-		"RulesRequiredStatusChecks",
-		"RulesNonFastForward",
-		"RulesCommitMessagePattern",
-		"RulesCommitAuthorEmailPattern",
-		"RulesCommitterEmailPattern",
-		"RulesBranchNamePattern",
-		"RulesTagNamePattern",
-		"RulesFilePathRestriction",
-		"RulesFilePathLength",
-		"RulesFileExtensionRestriction",
-		"RulesMaxFileSize",
-		"RulesWorkflows",
-		"RulesCodeScanning",
-		"CreatedAt",
-		"UpdatedAt",
 	}
+	headers = append(headers, data.RuleHeaders()...)
+	headers = append(headers, "CreatedAt", "UpdatedAt")
 
 	if err := csvWriter.Write(headers); err != nil {
 		zap.S().Errorf("Failed to write CSV headers: %v", err)
@@ -216,7 +205,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 					zap.S().Debugf("Processed %d rule types", len(rulesMap))
 
 					zap.S().Debugf("Writing CSV row for org ruleset: %s", singleRule.Name)
-					return csvWriter.Write([]string{
+					row := []string{
 						orgLevelRuleset.SourceType,
 						"N/A",
 						strconv.Itoa(orgLevelRuleset.ID),
@@ -231,30 +220,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 						orgConditions.BoolNames,
 						strings.Join(orgConditions.PropertyInclude, "|"),
 						strings.Join(orgConditions.PropertyExclude, "|"),
-						rulesMap["creation"],
-						rulesMap["update"],
-						rulesMap["deletion"],
-						rulesMap["required_linear_history"],
-						rulesMap["merge_queue"],
-						rulesMap["required_deployments"],
-						rulesMap["required_signatures"],
-						rulesMap["pull_request"],
-						rulesMap["required_status_checks"],
-						rulesMap["non_fast_forward"],
-						rulesMap["commit_message_pattern"],
-						rulesMap["commit_author_email_pattern"],
-						rulesMap["committer_email_pattern"],
-						rulesMap["branch_name_pattern"],
-						rulesMap["tag_name_pattern"],
-						rulesMap["file_path_restriction"],
-						rulesMap["max_file_path_length"],
-						rulesMap["file_extension_restriction"],
-						rulesMap["max_file_size"],
-						rulesMap["workflows"],
-						rulesMap["code_scanning"],
-						orgLevelRuleset.CreatedAt,
-						orgLevelRuleset.UpdatedAt,
-					})
+					}
+					row = append(row, buildRuleColumns(rulesMap)...)
+					row = append(row, orgLevelRuleset.CreatedAt, orgLevelRuleset.UpdatedAt)
+					return csvWriter.Write(row)
 				}, fmt.Sprintf("processing org ruleset %s", singleRule.Name))
 
 				if err != nil {
@@ -334,7 +303,7 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 
 					zap.S().Debugf("Writing CSV row for repo ruleset: %s/%s - %s",
 						owner, singleRepoRule.RepoName, singleRepoRule.Rule.Name)
-					err = csvWriter.Write([]string{
+					repoRow := []string{
 						repoLevelRuleset.SourceType,
 						singleRepoRule.RepoName,
 						strconv.Itoa(repoLevelRuleset.ID),
@@ -349,30 +318,10 @@ func runCmdList(owner string, repos []string, cmdFlags *cmdFlags, g ListGetter, 
 						repoConditions.BoolNames,
 						strings.Join(repoConditions.PropertyInclude, "|"),
 						strings.Join(repoConditions.PropertyExclude, "|"),
-						repoRulesMap["creation"],
-						repoRulesMap["update"],
-						repoRulesMap["deletion"],
-						repoRulesMap["required_linear_history"],
-						repoRulesMap["merge_queue"],
-						repoRulesMap["required_deployments"],
-						repoRulesMap["required_signatures"],
-						repoRulesMap["pull_request"],
-						repoRulesMap["required_status_checks"],
-						repoRulesMap["non_fast_forward"],
-						repoRulesMap["commit_message_pattern"],
-						repoRulesMap["commit_author_email_pattern"],
-						repoRulesMap["committer_email_pattern"],
-						repoRulesMap["branch_name_pattern"],
-						repoRulesMap["tag_name_pattern"],
-						repoRulesMap["file_path_restriction"],
-						repoRulesMap["max_file_path_length"],
-						repoRulesMap["file_extension_restriction"],
-						repoRulesMap["max_file_size"],
-						repoRulesMap["workflows"],
-						repoRulesMap["code_scanning"],
-						repoLevelRuleset.CreatedAt,
-						repoLevelRuleset.UpdatedAt,
-					})
+					}
+					repoRow = append(repoRow, buildRuleColumns(repoRulesMap)...)
+					repoRow = append(repoRow, repoLevelRuleset.CreatedAt, repoLevelRuleset.UpdatedAt)
+					err = csvWriter.Write(repoRow)
 					if err != nil {
 						zap.S().Warnf("Skipping ruleset %s for repo %s due to error: %v",
 							singleRepoRule.Rule.Name, singleRepoRule.RepoName, err)

@@ -119,6 +119,10 @@ The output `csv` file contains the following information:
 <tr><td><code>RulesMaxFileSize</code></td><td>Maximum file size allowed to be pushed to the commit.</td></tr>
 <tr><td><code>RulesWorkflows</code></td><td>Require all changes made to a targeted branch to pass the specified workflows before they can be merged. An array of workflow rules, in the format `do_not_enforce_on_create|workflows:{Path|ref|repository_id|sha}`</td></tr>
 <tr><td><code>RulesCodeScanning</code></td><td>Choose which tools must provide code scanning results before the reference is updated. An array of code scanning rules in the format `{Tool|SecurityAlertsThreshold|AlertsThreshold}`</td></tr>
+<tr><td><code>RulesCodeQuality</code></td><td>Require code quality checks to pass before the ref is updated. In the format `Severity`, where severity is one of `errors`, `warnings_and_higher`, `notes_and_higher`, or `all`.</td></tr>
+<tr><td><code>RulesCopilotCodeReview</code></td><td>Request an automatic review from Copilot on matching pull requests. In the format `review_draft_pull_requests|review_on_push`.</td></tr>
+<tr><td><code>RulesLicenseComplianceScanning</code></td><td>Require license compliance scanning results before the ref is updated.</td></tr>
+<tr><td><code>RulesCodeCoverage</code></td><td>Require a minimum code coverage threshold before the ref is updated. In the format `minimum_coverage|max_coverage_drop`.</td></tr>
 <tr><td><code>CreatedAt</code></td><td>Timestamp of when the ruleset was created.</td></tr>
 <tr><td><code>UpdatedAt</code></td><td>Timestamp of when the ruleset was last updated.</td></tr>
 </table>

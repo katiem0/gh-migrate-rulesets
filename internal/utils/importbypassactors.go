@@ -87,6 +87,10 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 			zap.S().Debugf("Keeping for DeployKey in ruleset %s", ruleset.Name)
 			continue
 		} else {
+			if actor.ActorID == nil {
+				zap.S().Warnf("Skipping bypass actor with nil ActorID (type %s) in ruleset %s", actor.ActorType, ruleset.Name)
+				continue
+			}
 			if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; !ok {
 				if actor.ActorType == "RepositoryRole" {
 					zap.S().Debugf("Processing bypass actor custom repository role")

@@ -28,8 +28,13 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
 		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]])
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
-		ruleHeaders := fileData[0][14:35]
-		ruleValues := each[14:35]
+		ruleHeaders := data.RuleHeaders()
+		ruleValues := make([]string, len(ruleHeaders))
+		for i, header := range ruleHeaders {
+			if idx, ok := headerMap[header]; ok && idx < len(each) {
+				ruleValues[i] = each[idx]
+			}
+		}
 		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues)
 		repoRuleset.CreatedAt = each[headerMap["CreatedAt"]]
 		repoRuleset.UpdatedAt = each[headerMap["UpdatedAt"]]

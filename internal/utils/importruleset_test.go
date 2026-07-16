@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
@@ -399,5 +401,76 @@ func TestProcessRulesets(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestProcessRulesetsCodeCoverageSendsThresholds guards the fix for the bug where
+// minimum_coverage and max_coverage_drop were silently dropped. Because both fields
+// are registered as NonOmitEmpty, the create payload must include them even when the
+// value is zero (a valid threshold).
+func TestProcessRulesetsCodeCoverageSendsThresholds(t *testing.T) {
+	ruleset := data.RepoRuleset{
+		Name:        "coverage-ruleset",
+		Target:      "branch",
+		Enforcement: "active",
+		Rules: []data.Rules{
+			{
+				Type: "code_coverage",
+				Parameters: &data.Parameters{
+					MinimumCoverage: 80,
+					MaxCoverageDrop: 0, // zero must still be sent
+				},
+			},
+		},
+	}
+
+	got, err := ProcessRulesets(ruleset)
+	if err != nil {
+		t.Fatalf("ProcessRulesets() error = %v", err)
+	}
+	if len(got.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(got.Rules))
+	}
+
+	payload, err := json.Marshal(got.Rules[0].Parameters)
+	if err != nil {
+		t.Fatalf("failed to marshal parameters: %v", err)
+	}
+	js := string(payload)
+	if !strings.Contains(js, `"minimum_coverage":80`) {
+		t.Errorf("expected minimum_coverage:80 to be sent, got: %s", js)
+	}
+	if !strings.Contains(js, `"max_coverage_drop":0`) {
+		t.Errorf("expected max_coverage_drop:0 to be sent (omitempty must be stripped), got: %s", js)
+	}
+}
+
+// TestProcessRulesetsParameterlessRule verifies that a rule type with no parameters
+// (license_compliance_scanning) is processed without attaching a parameters object.
+func TestProcessRulesetsParameterlessRule(t *testing.T) {
+	ruleset := data.RepoRuleset{
+		Name:        "license-ruleset",
+		Target:      "branch",
+		Enforcement: "active",
+		Rules: []data.Rules{
+			{
+				Type:       "license_compliance_scanning",
+				Parameters: nil,
+			},
+		},
+	}
+
+	got, err := ProcessRulesets(ruleset)
+	if err != nil {
+		t.Fatalf("ProcessRulesets() error = %v", err)
+	}
+	if len(got.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(got.Rules))
+	}
+	if got.Rules[0].Type != "license_compliance_scanning" {
+		t.Errorf("expected type license_compliance_scanning, got %q", got.Rules[0].Type)
+	}
+	if got.Rules[0].Parameters != nil {
+		t.Errorf("expected nil parameters for parameterless rule, got %+v", got.Rules[0].Parameters)
 	}
 }
