@@ -1,6 +1,7 @@
 package log
 
 import (
+	"errors"
 	"testing"
 
 	"go.uber.org/zap"
@@ -209,5 +210,34 @@ func TestNewLogger_MultipleInstances(t *testing.T) {
 
 		logger1.Info("logger 1 message")
 		logger2.Debug("logger 2 message")
+	})
+}
+
+func TestLogAndWrapError(t *testing.T) {
+	t.Run("nil error returns nil", func(t *testing.T) {
+		if got := LogAndWrapError(nil, "context %s", "value"); got != nil {
+			t.Errorf("LogAndWrapError(nil, ...) = %v, want nil", got)
+		}
+	})
+
+	t.Run("non-nil error is wrapped with context and preserves chain", func(t *testing.T) {
+		orig := errors.New("boom")
+		got := LogAndWrapError(orig, "failed to %s", "process")
+		if got == nil {
+			t.Fatal("LogAndWrapError() = nil, want wrapped error")
+		}
+		if !errors.Is(got, orig) {
+			t.Errorf("LogAndWrapError() error does not wrap original: %v", got)
+		}
+		want := "failed to process: boom"
+		if got.Error() != want {
+			t.Errorf("LogAndWrapError() = %q, want %q", got.Error(), want)
+		}
+	})
+}
+
+func TestLogWarning(t *testing.T) {
+	t.Run("does not panic", func(t *testing.T) {
+		LogWarning("warning: %s at %d", "disk", 90)
 	})
 }

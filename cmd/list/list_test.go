@@ -136,6 +136,21 @@ func TestNewCmdList(t *testing.T) {
 	}
 }
 
+func TestNewCmdListInvalidRuleType(t *testing.T) {
+	cmd := NewCmdList()
+	cmd.SetArgs([]string{"test-org", "--ruleType", "bogus"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("NewCmdList() Execute() expected error for invalid ruleType, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid ruleType") {
+		t.Errorf("NewCmdList() Execute() error = %v, want to contain 'invalid ruleType'", err)
+	}
+}
+
 func TestRunCmdList(t *testing.T) {
 	tests := []struct {
 		name        string
