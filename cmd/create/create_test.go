@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 	"github.com/katiem0/gh-migrate-rulesets/internal/utils"
@@ -547,7 +548,19 @@ func readErrorCSV(t *testing.T, owner string) string {
 			_ = os.Remove(m)
 		}
 	})
-	content, err := os.ReadFile(matches[len(matches)-1])
+	newest := matches[0]
+	var newestMod time.Time
+	for _, m := range matches {
+		info, err := os.Stat(m)
+		if err != nil {
+			t.Fatalf("failed to stat error CSV %q: %v", m, err)
+		}
+		if info.ModTime().After(newestMod) {
+			newest = m
+			newestMod = info.ModTime()
+		}
+	}
+	content, err := os.ReadFile(newest)
 	if err != nil {
 		t.Fatalf("failed to read error CSV: %v", err)
 	}
