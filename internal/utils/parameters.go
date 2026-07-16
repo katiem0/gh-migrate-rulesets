@@ -251,7 +251,7 @@ func parseRequiredReviewers(value interface{}) []data.RequiredReviewer {
 	for _, reviewerMap := range v {
 		reviewer := data.RequiredReviewer{}
 		if filePatterns := reviewerMap["FilePatterns"]; filePatterns != "" {
-			reviewer.FilePatterns = strings.Split(filePatterns, " ")
+			reviewer.FilePatterns = strings.Fields(filePatterns)
 		}
 		reviewer.MinimumApprovals, _ = strconv.Atoi(reviewerMap["MinimumApprovals"])
 		reviewerID, _ := strconv.Atoi(reviewerMap["ReviewerID"])

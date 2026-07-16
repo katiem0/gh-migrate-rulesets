@@ -88,3 +88,65 @@ func TestNonOmitEmptyFieldsDerivedFromRegistry(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleSpecByType(t *testing.T) {
+	t.Run("known type returns matching spec", func(t *testing.T) {
+		spec := RuleSpecByType("pull_request")
+		if spec == nil {
+			t.Fatal("RuleSpecByType(\"pull_request\") = nil, want spec")
+			return
+		}
+		if spec.Type != "pull_request" || spec.CSVHeader != "RulesPullRequest" {
+			t.Errorf("RuleSpecByType(\"pull_request\") = %+v, want type pull_request / header RulesPullRequest", spec)
+		}
+	})
+
+	t.Run("unknown type returns nil", func(t *testing.T) {
+		if spec := RuleSpecByType("does_not_exist"); spec != nil {
+			t.Errorf("RuleSpecByType(\"does_not_exist\") = %+v, want nil", spec)
+		}
+	})
+}
+
+func TestRuleSpecByHeader(t *testing.T) {
+	t.Run("known header returns matching spec", func(t *testing.T) {
+		spec := RuleSpecByHeader("RulesMergeQueue")
+		if spec == nil {
+			t.Fatal("RuleSpecByHeader(\"RulesMergeQueue\") = nil, want spec")
+			return
+		}
+		if spec.Type != "merge_queue" || spec.CSVHeader != "RulesMergeQueue" {
+			t.Errorf("RuleSpecByHeader(\"RulesMergeQueue\") = %+v, want type merge_queue", spec)
+		}
+	})
+
+	t.Run("unknown header returns nil", func(t *testing.T) {
+		if spec := RuleSpecByHeader("RulesNope"); spec != nil {
+			t.Errorf("RuleSpecByHeader(\"RulesNope\") = %+v, want nil", spec)
+		}
+	})
+}
+
+func TestValidFields(t *testing.T) {
+	t.Run("rule with fields returns them", func(t *testing.T) {
+		fields := ValidFields("merge_queue")
+		if fields == nil {
+			t.Fatal("ValidFields(\"merge_queue\") = nil, want fields")
+		}
+		if _, ok := fields["MergeMethod"]; !ok {
+			t.Errorf("ValidFields(\"merge_queue\") missing MergeMethod, got %v", fields)
+		}
+	})
+
+	t.Run("rule without fields returns nil", func(t *testing.T) {
+		if fields := ValidFields("creation"); fields != nil {
+			t.Errorf("ValidFields(\"creation\") = %v, want nil", fields)
+		}
+	})
+
+	t.Run("unknown rule returns nil", func(t *testing.T) {
+		if fields := ValidFields("does_not_exist"); fields != nil {
+			t.Errorf("ValidFields(\"does_not_exist\") = %v, want nil", fields)
+		}
+	})
+}

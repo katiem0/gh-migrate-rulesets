@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -238,4 +239,42 @@ func TestWriteErrorRulesetsToCSV(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSafeExecute(t *testing.T) {
+	t.Run("returns nil when function succeeds", func(t *testing.T) {
+		called := false
+		err := SafeExecute(func() error {
+			called = true
+			return nil
+		}, "success case")
+		if err != nil {
+			t.Errorf("SafeExecute() = %v, want nil", err)
+		}
+		if !called {
+			t.Error("SafeExecute() did not invoke the function")
+		}
+	})
+
+	t.Run("propagates the function's error", func(t *testing.T) {
+		want := "boom"
+		err := SafeExecute(func() error {
+			return errors.New(want)
+		}, "error case")
+		if err == nil || err.Error() != want {
+			t.Errorf("SafeExecute() = %v, want %q", err, want)
+		}
+	})
+
+	t.Run("recovers from panic and returns an error", func(t *testing.T) {
+		err := SafeExecute(func() error {
+			panic("kaboom")
+		}, "panic case")
+		if err == nil {
+			t.Fatal("SafeExecute() = nil, want error from recovered panic")
+		}
+		if !strings.Contains(err.Error(), "panic in panic case") {
+			t.Errorf("SafeExecute() = %q, want it to mention the panic context", err.Error())
+		}
+	})
 }

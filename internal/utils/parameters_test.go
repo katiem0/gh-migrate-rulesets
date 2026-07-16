@@ -686,3 +686,60 @@ func TestMapToParameters(t *testing.T) {
 		})
 	}
 }
+
+func TestParseStatusChecks(t *testing.T) {
+	t.Run("parses contexts and integration IDs", func(t *testing.T) {
+		value := []map[string]string{
+			{"Context": "ci/build", "IntegrationID": "123"},
+			{"Context": "ci/test", "IntegrationID": "0"},
+		}
+		got := parseStatusChecks(value)
+		if len(got) != 2 {
+			t.Fatalf("parseStatusChecks() returned %d checks, want 2", len(got))
+		}
+		if got[0].Context != "ci/build" || got[0].IntegrationID == nil || *got[0].IntegrationID != 123 {
+			t.Errorf("parseStatusChecks()[0] = %+v, want Context ci/build / IntegrationID 123", got[0])
+		}
+		// IntegrationID of 0 should be stored as a nil pointer.
+		if got[1].Context != "ci/test" || got[1].IntegrationID != nil {
+			t.Errorf("parseStatusChecks()[1] = %+v, want Context ci/test / nil IntegrationID", got[1])
+		}
+	})
+
+	t.Run("invalid IntegrationID is skipped", func(t *testing.T) {
+		value := []map[string]string{
+			{"Context": "ci/bad", "IntegrationID": "not-a-number"},
+		}
+		if got := parseStatusChecks(value); len(got) != 0 {
+			t.Errorf("parseStatusChecks() = %+v, want empty", got)
+		}
+	})
+
+	t.Run("wrong value type returns empty", func(t *testing.T) {
+		if got := parseStatusChecks("not a slice"); len(got) != 0 {
+			t.Errorf("parseStatusChecks() = %+v, want empty", got)
+		}
+	})
+}
+
+func TestParseCodeScanning(t *testing.T) {
+	t.Run("parses code scanning tools", func(t *testing.T) {
+		value := []map[string]string{
+			{"Tool": "CodeQL", "SecurityAlertsThreshold": "high", "AlertsThreshold": "errors"},
+		}
+		got := parseCodeScanning(value)
+		if len(got) != 1 {
+			t.Fatalf("parseCodeScanning() returned %d tools, want 1", len(got))
+		}
+		want := data.CodeScanning{Tool: "CodeQL", SecurityAlertsThreshold: "high", AlertsThreshold: "errors"}
+		if got[0] != want {
+			t.Errorf("parseCodeScanning()[0] = %+v, want %+v", got[0], want)
+		}
+	})
+
+	t.Run("wrong value type returns empty", func(t *testing.T) {
+		if got := parseCodeScanning(42); len(got) != 0 {
+			t.Errorf("parseCodeScanning() = %+v, want empty", got)
+		}
+	})
+}
