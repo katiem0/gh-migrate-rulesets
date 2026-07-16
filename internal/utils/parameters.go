@@ -55,6 +55,27 @@ func (g *APIGetter) ParametersToMap(params data.Parameters, ruleType string) map
 				statusCheckStrings = append(statusCheckStrings, statusCheckString)
 			}
 			result[fieldName] = strings.Join(statusCheckStrings, ";")
+		case reflect.TypeOf(&data.DismissalRestriction{}):
+			if field.IsNil() {
+				continue
+			}
+			dr := field.Interface().(*data.DismissalRestriction)
+			var actorStrings []string
+			for _, actor := range dr.AllowedActors {
+				actorStrings = append(actorStrings, fmt.Sprintf("{Enabled=%v|ActorID=%d|ActorType=%s}", dr.Enabled, actor.ID, actor.Type))
+			}
+			if len(actorStrings) == 0 {
+				actorStrings = append(actorStrings, fmt.Sprintf("{Enabled=%v}", dr.Enabled))
+			}
+			result[fieldName] = strings.Join(actorStrings, ";")
+		case reflect.TypeOf([]data.RequiredReviewer{}):
+			var reviewerStrings []string
+			for j := 0; j < field.Len(); j++ {
+				reviewer := field.Index(j).Interface().(data.RequiredReviewer)
+				reviewerString := fmt.Sprintf("{FilePatterns=%s|MinimumApprovals=%d|ReviewerID=%d|ReviewerType=%s}", strings.Join(reviewer.FilePatterns, " "), reviewer.MinimumApprovals, reviewer.Reviewer.ID, reviewer.Reviewer.Type)
+				reviewerStrings = append(reviewerStrings, reviewerString)
+			}
+			result[fieldName] = strings.Join(reviewerStrings, ";")
 		case reflect.TypeOf(true):
 			result[fieldName] = fmt.Sprintf("%v", field.Bool())
 		default:
@@ -78,6 +99,8 @@ func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface
 	workflowsType := reflect.TypeOf([]data.Workflows{})
 	codeScanningType := reflect.TypeOf([]data.CodeScanning{})
 	statusChecksType := reflect.TypeOf([]data.StatusChecks{})
+	requiredReviewersType := reflect.TypeOf([]data.RequiredReviewer{})
+	dismissalRestrictionType := reflect.TypeOf(&data.DismissalRestriction{})
 	stringSliceType := reflect.TypeOf([]string{})
 	v := reflect.ValueOf(&params).Elem()
 
@@ -109,10 +132,22 @@ func (g *APIGetter) MapToParameters(owner string, paramsMap map[string]interface
 				if len(parsedValue) > 0 {
 					field.Set(reflect.ValueOf(parsedValue))
 				}
+			} else if field.Type() == requiredReviewersType {
+				parsedValue := parseRequiredReviewers(value)
+				if len(parsedValue) > 0 {
+					field.Set(reflect.ValueOf(parsedValue))
+				}
 			} else if field.Type() == stringSliceType {
 				strSliceValue, ok := value.([]string)
 				if ok {
 					field.Set(reflect.ValueOf(strSliceValue))
+				}
+			}
+		case reflect.Ptr:
+			if field.Type() == dismissalRestrictionType {
+				parsedValue := parseDismissalRestriction(value)
+				if parsedValue != nil {
+					field.Set(reflect.ValueOf(parsedValue))
 				}
 			}
 		case reflect.String:
@@ -174,6 +209,59 @@ func parseCodeScanning(value interface{}) []data.CodeScanning {
 		codeScannings = append(codeScannings, codeScanning)
 	}
 	return codeScannings
+}
+
+func parseDismissalRestriction(value interface{}) *data.DismissalRestriction {
+	v, ok := value.([]map[string]string)
+	if !ok {
+		zap.S().Error("Invalid type for value")
+		return nil
+	}
+
+	dismissal := &data.DismissalRestriction{}
+	for i, actorMap := range v {
+		if i == 0 {
+			dismissal.Enabled, _ = strconv.ParseBool(actorMap["Enabled"])
+		}
+		idStr, ok := actorMap["ActorID"]
+		if !ok || idStr == "" {
+			continue
+		}
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			zap.S().Errorf("Invalid ActorID: %s", idStr)
+			continue
+		}
+		dismissal.AllowedActors = append(dismissal.AllowedActors, data.DismissalActor{
+			ID:   id,
+			Type: actorMap["ActorType"],
+		})
+	}
+	return dismissal
+}
+
+func parseRequiredReviewers(value interface{}) []data.RequiredReviewer {
+	var reviewers []data.RequiredReviewer
+	v, ok := value.([]map[string]string)
+	if !ok {
+		zap.S().Error("Invalid type for value")
+		return reviewers
+	}
+
+	for _, reviewerMap := range v {
+		reviewer := data.RequiredReviewer{}
+		if filePatterns := reviewerMap["FilePatterns"]; filePatterns != "" {
+			reviewer.FilePatterns = strings.Split(filePatterns, " ")
+		}
+		reviewer.MinimumApprovals, _ = strconv.Atoi(reviewerMap["MinimumApprovals"])
+		reviewerID, _ := strconv.Atoi(reviewerMap["ReviewerID"])
+		reviewer.Reviewer = data.ReviewerTeam{
+			ID:   reviewerID,
+			Type: reviewerMap["ReviewerType"],
+		}
+		reviewers = append(reviewers, reviewer)
+	}
+	return reviewers
 }
 
 func ParseParameters(paramStr string) map[string]interface{} {

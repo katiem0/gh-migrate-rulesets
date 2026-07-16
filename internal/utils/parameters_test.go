@@ -30,7 +30,7 @@ func TestGetValidFields(t *testing.T) {
 				"GroupingStrategy":             {},
 				"MaxEntriesToBuild":            {},
 				"MaxEntriesToMerge":            {},
-				"MergeType":                    {}, // Changed from MergeMethod to match actual implementation
+				"MergeMethod":                  {},
 				"MinEntriesToMerge":            {},
 				"MinEntriesToMergeWaitMinutes": {},
 			},
@@ -39,11 +39,21 @@ func TestGetValidFields(t *testing.T) {
 			name:     "pull_request rule type",
 			ruleType: "pull_request",
 			want: map[string]map[string]struct{}{
-				"DismissStaleReviewsOnPush":      {},
+				"AllowedMergeMethods":       {},
+				"DismissStaleReviewsOnPush": {},
+				"DismissalRestriction": {
+					"AllowedActors": {},
+					"Enabled":       {},
+				},
 				"RequireCodeOwnerReview":         {},
 				"RequireLastPushApproval":        {},
 				"RequiredApprovingReviewCount":   {},
 				"RequiredReviewThreadResolution": {},
+				"RequiredReviewers": {
+					"FilePatterns":     {},
+					"MinimumApprovals": {},
+					"Reviewer":         {},
+				},
 			},
 		},
 		{
@@ -149,6 +159,39 @@ func TestParametersToMap(t *testing.T) {
 			},
 		},
 		{
+			name: "pull_request parameters with dismissal and required reviewers",
+			params: data.Parameters{
+				RequiredApprovingReviewCount: 2,
+				DismissStaleReviewsOnPush:    true,
+				AllowedMergeMethods:          []string{"squash", "merge"},
+				DismissalRestriction: &data.DismissalRestriction{
+					Enabled: true,
+					AllowedActors: []data.DismissalActor{
+						{ID: 5, Type: "Team"},
+						{ID: 9, Type: "User"},
+					},
+				},
+				RequiredReviewers: []data.RequiredReviewer{
+					{
+						FilePatterns:     []string{"src/**", "docs/**"},
+						MinimumApprovals: 2,
+						Reviewer:         data.ReviewerTeam{ID: 42, Type: "Team"},
+					},
+				},
+			},
+			ruleType: "pull_request",
+			want: map[string]string{
+				"RequiredApprovingReviewCount":   "2",
+				"DismissStaleReviewsOnPush":      "true",
+				"RequireCodeOwnerReview":         "false",
+				"RequireLastPushApproval":        "false",
+				"RequiredReviewThreadResolution": "false",
+				"AllowedMergeMethods":            "[squash merge]",
+				"DismissalRestriction":           "{Enabled=true|ActorID=5|ActorType=Team};{Enabled=true|ActorID=9|ActorType=User}",
+				"RequiredReviewers":              "{FilePatterns=src/** docs/**|MinimumApprovals=2|ReviewerID=42|ReviewerType=Team}",
+			},
+		},
+		{
 			name: "merge_queue parameters",
 			params: data.Parameters{
 				CheckResponseTimeoutMinutes:  15,
@@ -165,9 +208,9 @@ func TestParametersToMap(t *testing.T) {
 				"GroupingStrategy":             "ALLGREEN",
 				"MaxEntriesToBuild":            "5",
 				"MaxEntriesToMerge":            "5",
+				"MergeMethod":                  "SQUASH",
 				"MinEntriesToMerge":            "1",
 				"MinEntriesToMergeWaitMinutes": "0",
-				// Note: MergeMethod not in output because GetValidFields uses "MergeType"
 			},
 		},
 		{
@@ -409,7 +452,7 @@ func TestParseParameters(t *testing.T) {
 			paramStr: "MinimumCoverage:80|MaxCoverageDrop:5",
 			want: map[string]interface{}{
 				"MinimumCoverage": "80",
-				"MaxCoverageDrop":  "5",
+				"MaxCoverageDrop": "5",
 			},
 		},
 		{
@@ -418,6 +461,25 @@ func TestParseParameters(t *testing.T) {
 			want: map[string]interface{}{
 				"ReviewDraftPullRequests": "false",
 				"ReviewOnPush":            "true",
+			},
+		},
+		{
+			name:     "dismissal restriction object",
+			paramStr: "DismissalRestriction:{Enabled=true|ActorID=5|ActorType=Team};{Enabled=true|ActorID=9|ActorType=User}",
+			want: map[string]interface{}{
+				"DismissalRestriction": []map[string]string{
+					{"Enabled": "true", "ActorID": "5", "ActorType": "Team"},
+					{"Enabled": "true", "ActorID": "9", "ActorType": "User"},
+				},
+			},
+		},
+		{
+			name:     "required reviewers object",
+			paramStr: "RequiredReviewers:{FilePatterns=src/** docs/**|MinimumApprovals=2|ReviewerID=42|ReviewerType=Team}",
+			want: map[string]interface{}{
+				"RequiredReviewers": []map[string]string{
+					{"FilePatterns": "src/** docs/**", "MinimumApprovals": "2", "ReviewerID": "42", "ReviewerType": "Team"},
+				},
 			},
 		},
 	}
@@ -467,6 +529,38 @@ func TestMapToParameters(t *testing.T) {
 			},
 		},
 		{
+			name:  "pull_request with dismissal and required reviewers",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"AllowedMergeMethods": []string{"squash", "merge"},
+				"DismissalRestriction": []map[string]string{
+					{"Enabled": "true", "ActorID": "5", "ActorType": "Team"},
+					{"Enabled": "true", "ActorID": "9", "ActorType": "User"},
+				},
+				"RequiredReviewers": []map[string]string{
+					{"FilePatterns": "src/** docs/**", "MinimumApprovals": "2", "ReviewerID": "42", "ReviewerType": "Team"},
+				},
+			},
+			ruleType: "pull_request",
+			want: &data.Parameters{
+				AllowedMergeMethods: []string{"squash", "merge"},
+				DismissalRestriction: &data.DismissalRestriction{
+					Enabled: true,
+					AllowedActors: []data.DismissalActor{
+						{ID: 5, Type: "Team"},
+						{ID: 9, Type: "User"},
+					},
+				},
+				RequiredReviewers: []data.RequiredReviewer{
+					{
+						FilePatterns:     []string{"src/**", "docs/**"},
+						MinimumApprovals: 2,
+						Reviewer:         data.ReviewerTeam{ID: 42, Type: "Team"},
+					},
+				},
+			},
+		},
+		{
 			name:  "merge_queue parameters",
 			owner: "testorg",
 			paramsMap: map[string]interface{}{
@@ -474,16 +568,17 @@ func TestMapToParameters(t *testing.T) {
 				"GroupingStrategy":             "ALLGREEN",
 				"MaxEntriesToBuild":            "5",
 				"MaxEntriesToMerge":            "5",
+				"MergeMethod":                  "SQUASH",
 				"MinEntriesToMerge":            "1",
 				"MinEntriesToMergeWaitMinutes": "0",
 			},
 			ruleType: "merge_queue",
 			want: &data.Parameters{
-				CheckResponseTimeoutMinutes: 15,
-				GroupingStrategy:            "ALLGREEN",
-				MaxEntriesToBuild:           5,
-				MaxEntriesToMerge:           5,
-				// MergeMethod not set because GetValidFields uses "MergeType"
+				CheckResponseTimeoutMinutes:  15,
+				GroupingStrategy:             "ALLGREEN",
+				MaxEntriesToBuild:            5,
+				MaxEntriesToMerge:            5,
+				MergeMethod:                  "SQUASH",
 				MinEntriesToMerge:            1,
 				MinEntriesToMergeWaitMinutes: 0,
 			},

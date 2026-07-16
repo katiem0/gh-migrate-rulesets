@@ -103,38 +103,41 @@ type PropertyPattern struct {
 }
 
 type Parameters struct {
-	RequiredApprovingReviewCount     int            `json:"required_approving_review_count,omitempty"`
-	DismissStaleReviewsOnPush        bool           `json:"dismiss_stale_reviews_on_push,omitempty"`
-	RequireCodeOwnerReview           bool           `json:"require_code_owner_review,omitempty"`
-	RequireLastPushApproval          bool           `json:"require_last_push_approval,omitempty"`
-	RequiredReviewThreadResolution   bool           `json:"required_review_thread_resolution,omitempty"`
-	DoNotEnforceOnCreate             bool           `json:"do_not_enforce_on_create,omitempty"`
-	Workflows                        []Workflows    `json:"workflows,omitempty"`
-	UpdateAllowsFetchAndMerge        bool           `json:"update_allows_fetch_and_merge,omitempty"`
-	CheckResponseTimeoutMinutes      int            `json:"check_response_timeout_minutes,omitempty"`
-	GroupingStrategy                 string         `json:"grouping_strategy,omitempty"`
-	MaxEntriesToBuild                int            `json:"max_entries_to_build,omitempty"`
-	MaxEntriesToMerge                int            `json:"max_entries_to_merge,omitempty"`
-	MergeMethod                      string         `json:"merge_method,omitempty"`
-	MinEntriesToMerge                int            `json:"min_entries_to_merge,omitempty"`
-	MinEntriesToMergeWaitMinutes     int            `json:"min_entries_to_merge_wait_minutes,omitempty"`
-	RequiredDeploymentEnvironments   []string       `json:"required_deployment_environments,omitempty"`
-	RequiredStatusChecks             []StatusChecks `json:"required_status_checks,omitempty"`
-	StrictRequiredStatusChecksPolicy bool           `json:"strict_required_status_checks_policy,omitempty"`
-	Name                             string         `json:"name,omitempty"`
-	Negate                           bool           `json:"negate,omitempty"`
-	Operator                         string         `json:"operator,omitempty"`
-	Pattern                          string         `json:"pattern,omitempty"`
-	RestrictedFilePaths              []string       `json:"restricted_file_paths,omitempty"`
-	MaxFilePathLength                int            `json:"max_file_path_length,omitempty"`
-	RestrictedFileExtensions         []string       `json:"restricted_file_extensions,omitempty"`
-	MaxFileSize                      int            `json:"max_file_size,omitempty"`
-	CodeScanningTools                []CodeScanning `json:"code_scanning_tools,omitempty"`
-	Severity                         string         `json:"severity,omitempty"`
-	ReviewDraftPullRequests          bool           `json:"review_draft_pull_requests,omitempty"`
-	ReviewOnPush                     bool           `json:"review_on_push,omitempty"`
-	MinimumCoverage                  int            `json:"minimum_coverage,omitempty"`
-	MaxCoverageDrop                  int            `json:"max_coverage_drop,omitempty"`
+	RequiredApprovingReviewCount     int                   `json:"required_approving_review_count,omitempty"`
+	DismissStaleReviewsOnPush        bool                  `json:"dismiss_stale_reviews_on_push,omitempty"`
+	RequireCodeOwnerReview           bool                  `json:"require_code_owner_review,omitempty"`
+	RequireLastPushApproval          bool                  `json:"require_last_push_approval,omitempty"`
+	RequiredReviewThreadResolution   bool                  `json:"required_review_thread_resolution,omitempty"`
+	AllowedMergeMethods              []string              `json:"allowed_merge_methods,omitempty"`
+	DismissalRestriction             *DismissalRestriction `json:"dismissal_restriction,omitempty"`
+	RequiredReviewers                []RequiredReviewer    `json:"required_reviewers,omitempty"`
+	DoNotEnforceOnCreate             bool                  `json:"do_not_enforce_on_create,omitempty"`
+	Workflows                        []Workflows           `json:"workflows,omitempty"`
+	UpdateAllowsFetchAndMerge        bool                  `json:"update_allows_fetch_and_merge,omitempty"`
+	CheckResponseTimeoutMinutes      int                   `json:"check_response_timeout_minutes,omitempty"`
+	GroupingStrategy                 string                `json:"grouping_strategy,omitempty"`
+	MaxEntriesToBuild                int                   `json:"max_entries_to_build,omitempty"`
+	MaxEntriesToMerge                int                   `json:"max_entries_to_merge,omitempty"`
+	MergeMethod                      string                `json:"merge_method,omitempty"`
+	MinEntriesToMerge                int                   `json:"min_entries_to_merge,omitempty"`
+	MinEntriesToMergeWaitMinutes     int                   `json:"min_entries_to_merge_wait_minutes,omitempty"`
+	RequiredDeploymentEnvironments   []string              `json:"required_deployment_environments,omitempty"`
+	RequiredStatusChecks             []StatusChecks        `json:"required_status_checks,omitempty"`
+	StrictRequiredStatusChecksPolicy bool                  `json:"strict_required_status_checks_policy,omitempty"`
+	Name                             string                `json:"name,omitempty"`
+	Negate                           bool                  `json:"negate,omitempty"`
+	Operator                         string                `json:"operator,omitempty"`
+	Pattern                          string                `json:"pattern,omitempty"`
+	RestrictedFilePaths              []string              `json:"restricted_file_paths,omitempty"`
+	MaxFilePathLength                int                   `json:"max_file_path_length,omitempty"`
+	RestrictedFileExtensions         []string              `json:"restricted_file_extensions,omitempty"`
+	MaxFileSize                      int                   `json:"max_file_size,omitempty"`
+	CodeScanningTools                []CodeScanning        `json:"code_scanning_tools,omitempty"`
+	Severity                         string                `json:"severity,omitempty"`
+	ReviewDraftPullRequests          bool                  `json:"review_draft_pull_requests,omitempty"`
+	ReviewOnPush                     bool                  `json:"review_on_push,omitempty"`
+	MinimumCoverage                  int                   `json:"minimum_coverage,omitempty"`
+	MaxCoverageDrop                  int                   `json:"max_coverage_drop,omitempty"`
 }
 
 type StatusChecks struct {
@@ -153,6 +156,34 @@ type Workflows struct {
 	Ref          string `json:"ref,omitempty"`
 	RepositoryID int    `json:"repository_id,omitempty"`
 	SHA          string `json:"sha,omitempty"`
+}
+
+// DismissalRestriction models the "Restrict who can dismiss pull request
+// reviews" setting of a pull_request rule.
+type DismissalRestriction struct {
+	AllowedActors []DismissalActor `json:"allowed_actors,omitempty"`
+	Enabled       bool             `json:"enabled"`
+}
+
+// DismissalActor is an actor allowed to dismiss pull request reviews. Type is
+// one of User, Team, IntegrationInstallation, or RepositoryRole.
+type DismissalActor struct {
+	ID   int    `json:"id"`
+	Type string `json:"type"`
+}
+
+// RequiredReviewer models an entry of the "Require review from specific teams"
+// setting of a pull_request rule.
+type RequiredReviewer struct {
+	FilePatterns     []string     `json:"file_patterns"`
+	MinimumApprovals int          `json:"minimum_approvals"`
+	Reviewer         ReviewerTeam `json:"reviewer"`
+}
+
+// ReviewerTeam identifies the team required to review matching files.
+type ReviewerTeam struct {
+	ID   int    `json:"id"`
+	Type string `json:"type"`
 }
 
 type ErrorRulesets struct {
