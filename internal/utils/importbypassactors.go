@@ -116,12 +116,12 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 				zap.S().Debugf("Processing bypass actor custom repository role")
 				sourceRole, err := s.GetCustomRoles(sourceOrg, *actor.ActorID)
 				if err != nil {
-					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", actor.ActorID, err)
+					zap.S().Errorf("Failed to get custom role data for actor ID %d: %v", *actor.ActorID, err)
 					continue
 				}
 				roleData, err := g.GetRepoCustomRoles(owner)
 				if err != nil || len(roleData.CustomRoles) == 0 {
-					zap.S().Infof("Failed to get new custom role data for Role ID %d", actor.ActorID)
+					zap.S().Infof("Failed to get new custom role data for Role ID %d", *actor.ActorID)
 					continue
 				} else {
 					for _, CustomRole := range roleData.CustomRoles {
@@ -134,7 +134,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 				zap.S().Debugf("Processing bypass actor integration from %s", sourceOrg)
 				sourceAppIntegration, err := s.GetAppInstallations(sourceOrg)
 				if err != nil {
-					zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", actor.ActorID, err)
+					zap.S().Errorf("Failed to get integration app data for actor ID %d: %v", *actor.ActorID, err)
 					continue
 				} else {
 					for _, app := range sourceAppIntegration.Installations {
@@ -142,7 +142,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 						if *actor.ActorID == app.AppID {
 							appIntegrationInfo, err := g.GetAnApp(app.AppSlug)
 							if err != nil {
-								zap.S().Errorf("Failed to get new integration app data for actor ID %d: %v", actor.ActorID, err)
+								zap.S().Errorf("Failed to get new integration app data for actor ID %d: %v", *actor.ActorID, err)
 								continue
 							} else {
 								ruleset.BypassActors[i].ActorID = &appIntegrationInfo.AppID
@@ -155,7 +155,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 				zap.S().Debugf("Processing bypass actor team")
 				sourceTeamData, err := s.GetTeamData(sourceOrgID, *actor.ActorID)
 				if err != nil {
-					zap.S().Infof("Failed to get team data for team id %d", actor.ActorID)
+					zap.S().Infof("Failed to get team data for team id %d", *actor.ActorID)
 					continue
 				} else {
 					teamData, err := g.GetTeamByName(owner, sourceTeamData.Name)

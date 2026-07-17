@@ -80,8 +80,6 @@ type Getter interface {
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
 	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
-	UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error
-	UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error
 	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 	UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
@@ -117,36 +115,6 @@ func (g *APIGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Reader) err
 	url := fmt.Sprintf("repos/%s/rulesets", ownerRepo)
 
 	resp, err := g.restClient.Request("POST", url, data)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			zap.S().Errorf("Error closing response body: %v", err)
-		}
-	}()
-	return nil
-}
-
-func (g *APIGetter) UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error {
-	url := fmt.Sprintf("orgs/%s/rulesets/%s", owner, strconv.Itoa(rulesetId))
-
-	resp, err := g.restClient.Request("PUT", url, data)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			zap.S().Errorf("Error closing response body: %v", err)
-		}
-	}()
-	return nil
-}
-
-func (g *APIGetter) UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error {
-	url := fmt.Sprintf("repos/%s/rulesets/%s", ownerRepo, strconv.Itoa(rulesetId))
-
-	resp, err := g.restClient.Request("PUT", url, data)
 	if err != nil {
 		return err
 	}

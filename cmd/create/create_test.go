@@ -206,20 +206,6 @@ func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sour
 	return ruleset
 }
 
-func (m *MockAPIGetter) UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error {
-	if m.ShouldError {
-		return errors.New("mock error updating org ruleset")
-	}
-	return nil
-}
-
-func (m *MockAPIGetter) UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error {
-	if m.ShouldError {
-		return errors.New("mock error updating repo ruleset")
-	}
-	return nil
-}
-
 func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
 	return ruleset
 }
