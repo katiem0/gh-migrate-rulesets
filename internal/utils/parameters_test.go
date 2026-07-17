@@ -30,7 +30,7 @@ func TestGetValidFields(t *testing.T) {
 				"GroupingStrategy":             {},
 				"MaxEntriesToBuild":            {},
 				"MaxEntriesToMerge":            {},
-				"MergeType":                    {}, // Changed from MergeMethod to match actual implementation
+				"MergeMethod":                  {},
 				"MinEntriesToMerge":            {},
 				"MinEntriesToMergeWaitMinutes": {},
 			},
@@ -39,11 +39,21 @@ func TestGetValidFields(t *testing.T) {
 			name:     "pull_request rule type",
 			ruleType: "pull_request",
 			want: map[string]map[string]struct{}{
-				"DismissStaleReviewsOnPush":      {},
+				"AllowedMergeMethods":       {},
+				"DismissStaleReviewsOnPush": {},
+				"DismissalRestriction": {
+					"AllowedActors": {},
+					"Enabled":       {},
+				},
 				"RequireCodeOwnerReview":         {},
 				"RequireLastPushApproval":        {},
 				"RequiredApprovingReviewCount":   {},
 				"RequiredReviewThreadResolution": {},
+				"RequiredReviewers": {
+					"FilePatterns":     {},
+					"MinimumApprovals": {},
+					"Reviewer":         {},
+				},
 			},
 		},
 		{
@@ -69,6 +79,34 @@ func TestGetValidFields(t *testing.T) {
 			want: map[string]map[string]struct{}{
 				"RequiredDeploymentEnvironments": {},
 			},
+		},
+		{
+			name:     "code_quality rule type",
+			ruleType: "code_quality",
+			want: map[string]map[string]struct{}{
+				"Severity": {},
+			},
+		},
+		{
+			name:     "copilot_code_review rule type",
+			ruleType: "copilot_code_review",
+			want: map[string]map[string]struct{}{
+				"ReviewDraftPullRequests": {},
+				"ReviewOnPush":            {},
+			},
+		},
+		{
+			name:     "code_coverage rule type",
+			ruleType: "code_coverage",
+			want: map[string]map[string]struct{}{
+				"MinimumCoverage": {},
+				"MaxCoverageDrop": {},
+			},
+		},
+		{
+			name:     "license_compliance_scanning rule type has no parameters",
+			ruleType: "license_compliance_scanning",
+			want:     nil,
 		},
 	}
 
@@ -121,6 +159,39 @@ func TestParametersToMap(t *testing.T) {
 			},
 		},
 		{
+			name: "pull_request parameters with dismissal and required reviewers",
+			params: data.Parameters{
+				RequiredApprovingReviewCount: 2,
+				DismissStaleReviewsOnPush:    true,
+				AllowedMergeMethods:          []string{"squash", "merge"},
+				DismissalRestriction: &data.DismissalRestriction{
+					Enabled: true,
+					AllowedActors: []data.DismissalActor{
+						{ID: 5, Type: "Team"},
+						{ID: 9, Type: "User"},
+					},
+				},
+				RequiredReviewers: []data.RequiredReviewer{
+					{
+						FilePatterns:     []string{"src/**", "docs/**"},
+						MinimumApprovals: 2,
+						Reviewer:         data.ReviewerTeam{ID: 42, Type: "Team"},
+					},
+				},
+			},
+			ruleType: "pull_request",
+			want: map[string]string{
+				"RequiredApprovingReviewCount":   "2",
+				"DismissStaleReviewsOnPush":      "true",
+				"RequireCodeOwnerReview":         "false",
+				"RequireLastPushApproval":        "false",
+				"RequiredReviewThreadResolution": "false",
+				"AllowedMergeMethods":            "[squash merge]",
+				"DismissalRestriction":           "{Enabled=true|ActorID=5|ActorType=Team};{Enabled=true|ActorID=9|ActorType=User}",
+				"RequiredReviewers":              "{FilePatterns=src/** docs/**|MinimumApprovals=2|ReviewerID=42|ReviewerType=Team}",
+			},
+		},
+		{
 			name: "merge_queue parameters",
 			params: data.Parameters{
 				CheckResponseTimeoutMinutes:  15,
@@ -137,9 +208,9 @@ func TestParametersToMap(t *testing.T) {
 				"GroupingStrategy":             "ALLGREEN",
 				"MaxEntriesToBuild":            "5",
 				"MaxEntriesToMerge":            "5",
+				"MergeMethod":                  "SQUASH",
 				"MinEntriesToMerge":            "1",
 				"MinEntriesToMergeWaitMinutes": "0",
-				// Note: MergeMethod not in output because GetValidFields uses "MergeType"
 			},
 		},
 		{
@@ -162,6 +233,40 @@ func TestParametersToMap(t *testing.T) {
 			ruleType: "code_scanning",
 			want: map[string]string{
 				"CodeScanningTools": "{Tool=CodeQL|SecurityAlertsThreshold=high|AlertsThreshold=high}",
+			},
+		},
+		{
+			name: "code_quality parameters",
+			params: data.Parameters{
+				Severity: "warnings_and_higher",
+			},
+			ruleType: "code_quality",
+			want: map[string]string{
+				"Severity": "warnings_and_higher",
+			},
+		},
+		{
+			name: "copilot_code_review parameters",
+			params: data.Parameters{
+				ReviewDraftPullRequests: true,
+				ReviewOnPush:            false,
+			},
+			ruleType: "copilot_code_review",
+			want: map[string]string{
+				"ReviewDraftPullRequests": "true",
+				"ReviewOnPush":            "false",
+			},
+		},
+		{
+			name: "code_coverage parameters",
+			params: data.Parameters{
+				MinimumCoverage: 80,
+				MaxCoverageDrop: 80,
+			},
+			ruleType: "code_coverage",
+			want: map[string]string{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop": "80",
 			},
 		},
 		{
@@ -335,6 +440,48 @@ func TestParseParameters(t *testing.T) {
 				"MaxFilePathLength": "256",
 			},
 		},
+		{
+			name:     "code_quality severity value",
+			paramStr: "Severity:errors",
+			want: map[string]interface{}{
+				"Severity": "errors",
+			},
+		},
+		{
+			name:     "code_coverage threshold values",
+			paramStr: "MinimumCoverage:80|MaxCoverageDrop:5",
+			want: map[string]interface{}{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop": "5",
+			},
+		},
+		{
+			name:     "copilot_code_review boolean values",
+			paramStr: "ReviewDraftPullRequests:false|ReviewOnPush:true",
+			want: map[string]interface{}{
+				"ReviewDraftPullRequests": "false",
+				"ReviewOnPush":            "true",
+			},
+		},
+		{
+			name:     "dismissal restriction object",
+			paramStr: "DismissalRestriction:{Enabled=true|ActorID=5|ActorType=Team};{Enabled=true|ActorID=9|ActorType=User}",
+			want: map[string]interface{}{
+				"DismissalRestriction": []map[string]string{
+					{"Enabled": "true", "ActorID": "5", "ActorType": "Team"},
+					{"Enabled": "true", "ActorID": "9", "ActorType": "User"},
+				},
+			},
+		},
+		{
+			name:     "required reviewers object",
+			paramStr: "RequiredReviewers:{FilePatterns=src/** docs/**|MinimumApprovals=2|ReviewerID=42|ReviewerType=Team}",
+			want: map[string]interface{}{
+				"RequiredReviewers": []map[string]string{
+					{"FilePatterns": "src/** docs/**", "MinimumApprovals": "2", "ReviewerID": "42", "ReviewerType": "Team"},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -382,6 +529,38 @@ func TestMapToParameters(t *testing.T) {
 			},
 		},
 		{
+			name:  "pull_request with dismissal and required reviewers",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"AllowedMergeMethods": []string{"squash", "merge"},
+				"DismissalRestriction": []map[string]string{
+					{"Enabled": "true", "ActorID": "5", "ActorType": "Team"},
+					{"Enabled": "true", "ActorID": "9", "ActorType": "User"},
+				},
+				"RequiredReviewers": []map[string]string{
+					{"FilePatterns": "src/** docs/**", "MinimumApprovals": "2", "ReviewerID": "42", "ReviewerType": "Team"},
+				},
+			},
+			ruleType: "pull_request",
+			want: &data.Parameters{
+				AllowedMergeMethods: []string{"squash", "merge"},
+				DismissalRestriction: &data.DismissalRestriction{
+					Enabled: true,
+					AllowedActors: []data.DismissalActor{
+						{ID: 5, Type: "Team"},
+						{ID: 9, Type: "User"},
+					},
+				},
+				RequiredReviewers: []data.RequiredReviewer{
+					{
+						FilePatterns:     []string{"src/**", "docs/**"},
+						MinimumApprovals: 2,
+						Reviewer:         data.ReviewerTeam{ID: 42, Type: "Team"},
+					},
+				},
+			},
+		},
+		{
 			name:  "merge_queue parameters",
 			owner: "testorg",
 			paramsMap: map[string]interface{}{
@@ -389,16 +568,17 @@ func TestMapToParameters(t *testing.T) {
 				"GroupingStrategy":             "ALLGREEN",
 				"MaxEntriesToBuild":            "5",
 				"MaxEntriesToMerge":            "5",
+				"MergeMethod":                  "SQUASH",
 				"MinEntriesToMerge":            "1",
 				"MinEntriesToMergeWaitMinutes": "0",
 			},
 			ruleType: "merge_queue",
 			want: &data.Parameters{
-				CheckResponseTimeoutMinutes: 15,
-				GroupingStrategy:            "ALLGREEN",
-				MaxEntriesToBuild:           5,
-				MaxEntriesToMerge:           5,
-				// MergeMethod not set because GetValidFields uses "MergeType"
+				CheckResponseTimeoutMinutes:  15,
+				GroupingStrategy:             "ALLGREEN",
+				MaxEntriesToBuild:            5,
+				MaxEntriesToMerge:            5,
+				MergeMethod:                  "SQUASH",
 				MinEntriesToMerge:            1,
 				MinEntriesToMergeWaitMinutes: 0,
 			},
@@ -445,14 +625,121 @@ func TestMapToParameters(t *testing.T) {
 				Pattern:  "feat:",
 			},
 		},
+		{
+			name:  "code_quality parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"Severity": "warnings_and_higher",
+			},
+			ruleType: "code_quality",
+			want: &data.Parameters{
+				Severity: "warnings_and_higher",
+			},
+		},
+		{
+			name:  "copilot_code_review parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"ReviewDraftPullRequests": "false",
+				"ReviewOnPush":            "true",
+			},
+			ruleType: "copilot_code_review",
+			want: &data.Parameters{
+				ReviewDraftPullRequests: false,
+				ReviewOnPush:            true,
+			},
+		},
+		{
+			name:  "code_coverage parameters",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"MinimumCoverage": "80",
+				"MaxCoverageDrop": "5",
+			},
+			ruleType: "code_coverage",
+			want: &data.Parameters{
+				MinimumCoverage: 80,
+				MaxCoverageDrop: 5,
+			},
+		},
+		{
+			name:  "code_coverage parameters with zero values",
+			owner: "testorg",
+			paramsMap: map[string]interface{}{
+				"MinimumCoverage": "0",
+				"MaxCoverageDrop": "0",
+			},
+			ruleType: "code_coverage",
+			want: &data.Parameters{
+				MinimumCoverage: 0,
+				MaxCoverageDrop: 0,
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := g.MapToParameters(tt.owner, tt.paramsMap, tt.ruleType, map[string]string{})
+			got := g.MapToParameters(tt.owner, tt.paramsMap, tt.ruleType)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("MapToParameters() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
+}
+
+func TestParseStatusChecks(t *testing.T) {
+	t.Run("parses contexts and integration IDs", func(t *testing.T) {
+		value := []map[string]string{
+			{"Context": "ci/build", "IntegrationID": "123"},
+			{"Context": "ci/test", "IntegrationID": "0"},
+		}
+		got := parseStatusChecks(value)
+		if len(got) != 2 {
+			t.Fatalf("parseStatusChecks() returned %d checks, want 2", len(got))
+		}
+		if got[0].Context != "ci/build" || got[0].IntegrationID == nil || *got[0].IntegrationID != 123 {
+			t.Errorf("parseStatusChecks()[0] = %+v, want Context ci/build / IntegrationID 123", got[0])
+		}
+		// IntegrationID of 0 should be stored as a nil pointer.
+		if got[1].Context != "ci/test" || got[1].IntegrationID != nil {
+			t.Errorf("parseStatusChecks()[1] = %+v, want Context ci/test / nil IntegrationID", got[1])
+		}
+	})
+
+	t.Run("invalid IntegrationID is skipped", func(t *testing.T) {
+		value := []map[string]string{
+			{"Context": "ci/bad", "IntegrationID": "not-a-number"},
+		}
+		if got := parseStatusChecks(value); len(got) != 0 {
+			t.Errorf("parseStatusChecks() = %+v, want empty", got)
+		}
+	})
+
+	t.Run("wrong value type returns empty", func(t *testing.T) {
+		if got := parseStatusChecks("not a slice"); len(got) != 0 {
+			t.Errorf("parseStatusChecks() = %+v, want empty", got)
+		}
+	})
+}
+
+func TestParseCodeScanning(t *testing.T) {
+	t.Run("parses code scanning tools", func(t *testing.T) {
+		value := []map[string]string{
+			{"Tool": "CodeQL", "SecurityAlertsThreshold": "high", "AlertsThreshold": "errors"},
+		}
+		got := parseCodeScanning(value)
+		if len(got) != 1 {
+			t.Fatalf("parseCodeScanning() returned %d tools, want 1", len(got))
+		}
+		want := data.CodeScanning{Tool: "CodeQL", SecurityAlertsThreshold: "high", AlertsThreshold: "errors"}
+		if got[0] != want {
+			t.Errorf("parseCodeScanning()[0] = %+v, want %+v", got[0], want)
+		}
+	})
+
+	t.Run("wrong value type returns empty", func(t *testing.T) {
+		if got := parseCodeScanning(42); len(got) != 0 {
+			t.Errorf("parseCodeScanning() = %+v, want empty", got)
+		}
+	})
 }

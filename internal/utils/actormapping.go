@@ -23,6 +23,22 @@ func resolveMappedActorID(actorMapping map[string]int, actorType string, sourceI
 	return targetID, ok
 }
 
+func csvFieldValue(record []string, index int) string {
+	if index >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[index])
+}
+
+func isEmptyCSVRecord(record []string) bool {
+	for _, value := range record {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // LoadActorMapping reads a bypass actor mapping CSV keyed by actor_type and source_id.
 // It is used to supply target IDs the API cannot resolve by name (e.g. base repository
 // roles) or to override name-based resolution when an actor was renamed in the target.

@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset {
+func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
 	headerMap := make(map[string]int)
@@ -24,18 +24,44 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, ac
 		repoRuleset.Name = each[headerMap["RulesetName"]]
 		repoRuleset.Target = each[headerMap["Target"]]
 		repoRuleset.SourceType = each[headerMap["RulesetLevel"]]
-		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], each[headerMap["RepositoryName"]])
+		sourceRepo, targetRepo := repoNamesFromRow(each, headerMap)
+		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], sourceRepo)
+		repoRuleset.TargetSource = determineSource(owner, each[headerMap["RulesetLevel"]], targetRepo)
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
 		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]], actorMapping)
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
-		ruleHeaders := fileData[0][14:35]
-		ruleValues := each[14:35]
-		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues, repoMapping)
+		ruleHeaders := data.RuleHeaders()
+		ruleValues := make([]string, len(ruleHeaders))
+		for i, header := range ruleHeaders {
+			if idx, ok := headerMap[header]; ok && idx < len(each) {
+				ruleValues[i] = each[idx]
+			}
+		}
+		repoRuleset.Rules = g.parseRules(owner, ruleHeaders, ruleValues)
 		repoRuleset.CreatedAt = each[headerMap["CreatedAt"]]
 		repoRuleset.UpdatedAt = each[headerMap["UpdatedAt"]]
 		importRepoRuleset = append(importRepoRuleset, repoRuleset)
 	}
 	return importRepoRuleset
+}
+
+// repoNamesFromRow returns the source and target repository names for a CSV row.
+// It reads SourceRepositoryName (falling back to the legacy RepositoryName header
+// for backward compatibility) and TargetRepositoryName. When TargetRepositoryName
+// is missing or empty, the target defaults to the source repository name.
+func repoNamesFromRow(each []string, headerMap map[string]int) (source, target string) {
+	sourceIdx, ok := headerMap["SourceRepositoryName"]
+	if !ok {
+		sourceIdx, ok = headerMap["RepositoryName"]
+	}
+	if ok && sourceIdx < len(each) {
+		source = each[sourceIdx]
+	}
+	target = source
+	if idx, ok := headerMap["TargetRepositoryName"]; ok && idx < len(each) && each[idx] != "" {
+		target = each[idx]
+	}
+	return source, target
 }
 
 func determineSource(owner, sourceType, repoName string) string {
@@ -86,7 +112,7 @@ func parsePropertyPatterns(patternsStr string) []data.PropertyPattern {
 	return propertyPatterns
 }
 
-func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []string, repoMapping map[string]string) []data.Rules {
+func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []string) []data.Rules {
 	rules := make([]data.Rules, 0, len(headerMap))
 
 	for i := 0; i < len(headerMap) && i < len(ruleValues); i++ {
@@ -99,7 +125,7 @@ func (g *APIGetter) parseRules(owner string, headerMap []string, ruleValues []st
 		}
 		if ruleValues[i] != "" {
 			parameters := ParseParameters(ruleValues[i])
-			rule.Parameters = g.MapToParameters(owner, parameters, header, repoMapping)
+			rule.Parameters = g.MapToParameters(owner, parameters, header)
 		} else {
 			zap.S().Debugf("%s does not contain Parameters", header)
 		}

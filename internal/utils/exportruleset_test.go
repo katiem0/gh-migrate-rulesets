@@ -248,6 +248,32 @@ func TestProcessRules(t *testing.T) {
 	}
 }
 
+func TestProcessRulesStableFieldOrder(t *testing.T) {
+	g := &APIGetter{}
+
+	rules := []data.Rules{
+		{
+			Type: "branch_name_pattern",
+			Parameters: &data.Parameters{
+				Name:     "Hotfixes must be merged in master first",
+				Negate:   true,
+				Operator: "starts_with",
+				Pattern:  "hotfix/",
+			},
+		},
+	}
+
+	want := "Name:Hotfixes must be merged in master first|Negate:true|Operator:starts_with|Pattern:hotfix/"
+
+	// Run repeatedly to catch non-deterministic map iteration order.
+	for i := 0; i < 50; i++ {
+		got := g.ProcessRules(rules)
+		if got["branch_name_pattern"] != want {
+			t.Fatalf("ProcessRules() branch_name_pattern = %q, want %q (iteration %d)", got["branch_name_pattern"], want, i)
+		}
+	}
+}
+
 func TestProcessActorsForExport(t *testing.T) {
 	g := &APIGetter{}
 

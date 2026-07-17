@@ -57,7 +57,7 @@ func (m *MockWorkflowGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Re
 	return nil
 }
 
-func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset {
+func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset {
 	return nil
 }
 
@@ -112,7 +112,7 @@ func (m *MockWorkflowGetter) UpdateStatusCheckIntegrationID(owner string, source
 	return ruleset
 }
 
-func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter, repoMapping map[string]string) data.RepoRuleset {
+func (m *MockWorkflowGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
 	for i, rule := range ruleset.Rules {
 		if rule.Type == "workflows" && rule.Parameters != nil {
 			for j, workflow := range rule.Parameters.Workflows {
@@ -166,7 +166,7 @@ func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActo
 	return nil
 }
 
-func (m *MockWorkflowGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}, repoMapping map[string]string) []data.Workflows {
+func (m *MockWorkflowGetter) ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows {
 	if workflowMaps, ok := value.([]map[string]string); ok {
 		var workflows []data.Workflows
 		for _, wfMap := range workflowMaps {
@@ -186,7 +186,7 @@ func (m *MockWorkflowGetter) ParametersToMap(params data.Parameters, ruleType st
 	return nil
 }
 
-func (m *MockWorkflowGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters {
+func (m *MockWorkflowGetter) MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters {
 	return nil
 }
 
@@ -243,7 +243,7 @@ func TestParseRequiredWorkflowsForImport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mockGetter.ParseRequiredWorkflowsForImport(tt.owner, tt.value, map[string]string{})
+			got := mockGetter.ParseRequiredWorkflowsForImport(tt.owner, tt.value)
 			if len(got) != tt.want {
 				t.Errorf("ParseRequiredWorkflowsForImport() returned %d workflows, want %d", len(got), tt.want)
 			}
@@ -339,7 +339,7 @@ func TestUpdateRequiredWorkflowRepoID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mockGetter.UpdateRequiredWorkflowRepoID(tt.owner, tt.ruleset, mockSource, map[string]string{})
+			got := mockGetter.UpdateRequiredWorkflowRepoID(tt.owner, tt.ruleset, mockSource)
 			if len(got.Rules) != tt.want {
 				t.Errorf("UpdateRequiredWorkflowRepoID() returned %d rules, want %d", len(got.Rules), tt.want)
 			}

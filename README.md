@@ -85,14 +85,15 @@ The output `csv` file contains the following information:
 <table>
 <tr><th>Field Name</th><th>Description</th></tr>
 <tr><td><code>RulesetLevel</code></td><td>Indicates whether the ruleset is at the organization or repository level.</td></tr>
-<tr><td><code>RepositoryName</code></td><td>If repository level ruleset, the name of the repository where the data is extracted from. For Organization rulesets, this is `N/A`.</td></tr>
+<tr><td><code>SourceRepositoryName</code></td><td>If repository level ruleset, the name of the repository where the data is extracted from. For Organization rulesets, this is <code>N/A</code>.</td></tr>
+<tr><td><code>TargetRepositoryName</code></td><td>The destination repository name used when creating rulesets with <code>--from-file</code>. Defaults to the same value as <code>SourceRepositoryName</code> on export; edit this column to rename the destination repository during a <code>--from-file</code> migration. For Organization rulesets, this is <code>N/A</code>.</td></tr>
 <tr><td><code>RuleID</code></td><td>Unique identifier for the rule.</td></tr>
 <tr><td><code>RulesetName</code></td><td>Name of the ruleset.</td></tr>
-<tr><td><code>Target</code></td><td>Indicates the type of ruleset, can be `branch`, `tag`, or `push`.</td></tr>
-<tr><td><code>Enforcement</code></td><td>Enforcement level of the ruleset (e.g., `active`, `evaluate`, or `disabled`).</td></tr>
-<tr><td><code>BypassActors</code></td><td>Actors who can bypass the ruleset, specified in the format `ID;Role;Name;Condition`.</td></tr>
-<tr><td><code>ConditionsRefNameInclude</code></td><td>Array of `ref` names to include in the ruleset conditions.</td></tr>
-<tr><td><code>ConditionsRefNameExclude</code></td><td>Array of `ref` names to exclude from the ruleset conditions.</td></tr>
+<tr><td><code>Target</code></td><td>Indicates the type of ruleset, can be <code>branch</code>, <code>tag</code>, or <code>push</code>.</td></tr>
+<tr><td><code>Enforcement</code></td><td>Enforcement level of the ruleset (e.g., <code>active</code>, <code>evaluate</code>, or <code>disabled</code>).</td></tr>
+<tr><td><code>BypassActors</code></td><td>Actors who can bypass the ruleset, specified in the format <code>ID;Role;Name;Condition</code>.</td></tr>
+<tr><td><code>ConditionsRefNameInclude</code></td><td>Array of <code>ref</code> names to include in the ruleset conditions.</td></tr>
+<tr><td><code>ConditionsRefNameExclude</code></td><td>Array of <code>ref</code> names to exclude from the ruleset conditions.</td></tr>
 <tr><td><code>ConditionsRepoNameInclude</code></td><td>Array of repository names to include in the ruleset conditions.</td></tr>
 <tr><td><code>ConditionsRepoNameExclude</code></td><td>Array of repository names to exclude from the ruleset conditions.</td></tr>
 <tr><td><code>ConditionsRepoNameProtected</code></td><td>Indicates whether renaming of target repositories is prevented.</td></tr>
@@ -102,28 +103,38 @@ The output `csv` file contains the following information:
 <tr><td><code>RulesUpdate</code></td><td>Only allow users with bypass permissions to delete matching refs.</td></tr>
 <tr><td><code>RulesDeletion</code></td><td>Prevent merge commits from being pushed to matching refs.</td></tr>
 <tr><td><code>RulesRequiredLinearHistory</code></td><td>Prevent merge commits from being pushed to matching refs.</td></tr>
-<tr><td><code>RulesMergeQueue</code></td><td>Merges must be performed via a merge queue. In the format `check_response_timeout_minutes|grouping_strategy|max_entries_to_build|max_entries_to_merge|merge_method|min_entries_to_merge|min_entries_to_merge_wait_minutes`</td></tr>
-<tr><td><code>RulesRequiredDeployments</code></td><td>Choose which environments must be successfully deployed to before refs can be pushed into a ref that matches this rule. Includes `required_deployment_environments` array.</td></tr>
+<tr><td><code>RulesMergeQueue</code></td><td>Merges must be performed via a merge queue. In the format <code>check_response_timeout_minutes|grouping_strategy|max_entries_to_build|max_entries_to_merge|merge_method|min_entries_to_merge|min_entries_to_merge_wait_minutes</code></td></tr>
+<tr><td><code>RulesRequiredDeployments</code></td><td>Choose which environments must be successfully deployed to before refs can be pushed into a ref that matches this rule. Includes <code>required_deployment_environments</code> array.</td></tr>
 <tr><td><code>RulesRequiredSignatures</code></td><td>Commits pushed to matching refs must have verified signatures.</td></tr>
-<tr><td><code>RulesPullRequest</code></td><td>Require all commits be made to a non-target branch and submitted via a pull request before they can be merged. In the format `dismiss_stale_reviews_on_push|require_code_owner_review|require_last_push_approval|required_approving_review_count|required_review_thread_resolution`</td></tr>
-<tr><td><code>RulesRequiredStatusChecks</code></td><td>Choose which status checks must pass before the ref is updated. An array of required status check rules, in the format `do_not_enforce_on_create|required_status_checks:{context|integration}|strict_required_status_checks_policy`</td></tr>
+<tr><td><code>RulesPullRequest</code></td><td>Require all commits be made to a non-target branch and submitted via a pull request before they can be merged. In the format <code>DismissStaleReviewsOnPush:&lt;bool&gt;|RequireCodeOwnerReview:&lt;bool&gt;|RequireLastPushApproval:&lt;bool&gt;|RequiredApprovingReviewCount:&lt;int&gt;|RequiredReviewThreadResolution:&lt;bool&gt;</code>. Optionally includes <code>AllowedMergeMethods:[merge squash rebase]</code> (allowed merge methods), <code>DismissalRestriction:{Enabled=&lt;bool&gt;\|ActorID=&lt;int&gt;\|ActorType=&lt;User\|Team\|IntegrationInstallation\|RepositoryRole&gt;};...</code> (restrict who can dismiss reviews), and <code>RequiredReviewers:{FilePatterns=&lt;space-separated globs&gt;\|MinimumApprovals=&lt;int&gt;\|ReviewerID=&lt;int&gt;\|ReviewerType=Team};...</code> (require review from specific teams). <b>Note:</b> actor and team IDs in <code>DismissalRestriction</code>/<code>RequiredReviewers</code> are exported and imported as-is; when migrating across organizations they are not remapped, so update them manually in the target org.</td></tr>
+<tr><td><code>RulesRequiredStatusChecks</code></td><td>Choose which status checks must pass before the ref is updated. An array of required status check rules, in the format <code>do_not_enforce_on_create|required_status_checks:{context|integration}|strict_required_status_checks_policy</code></td></tr>
 <tr><td><code>RulesNonFastForward</code></td><td>Prevent users with push access from force pushing to refs.</td></tr>
-<tr><td><code>RulesCommitMessagePattern</code></td><td>Indicates commit message patterns and matching. In the format `Name|Negate|Operator|Pattern`</td></tr>
-<tr><td><code>RulesCommitAuthorEmailPattern</code></td><td>Indicates commit author email patterns and matching. In the format `Name|Negate|Operator|Pattern`</td></tr>
-<tr><td><code>RulesCommitterEmailPattern</code></td><td>Indicates committer email patterns and matching. In the format `Name|Negate|Operator|Pattern`</td></tr>
-<tr><td><code>RulesBranchNamePattern</code></td><td>Indicates branch name patterns and matching. In the format `Name|Negate|Operator|Pattern`</td></tr>
-<tr><td><code>RulesTagNamePattern</code></td><td>Indicates tag name patterns and matching. In the format `Name|Negate|Operator|Pattern`</td></tr>
+<tr><td><code>RulesCommitMessagePattern</code></td><td>Indicates commit message patterns and matching. In the format <code>Name|Negate|Operator|Pattern</code></td></tr>
+<tr><td><code>RulesCommitAuthorEmailPattern</code></td><td>Indicates commit author email patterns and matching. In the format <code>Name|Negate|Operator|Pattern</code></td></tr>
+<tr><td><code>RulesCommitterEmailPattern</code></td><td>Indicates committer email patterns and matching. In the format <code>Name|Negate|Operator|Pattern</code></td></tr>
+<tr><td><code>RulesBranchNamePattern</code></td><td>Indicates branch name patterns and matching. In the format <code>Name|Negate|Operator|Pattern</code></td></tr>
+<tr><td><code>RulesTagNamePattern</code></td><td>Indicates tag name patterns and matching. In the format <code>Name|Negate|Operator|Pattern</code></td></tr>
 <tr><td><code>RulesFilePathRestriction</code></td><td>Prevent commits that include changes in specified file paths from being pushed to the commit graph.</td></tr>
 <tr><td><code>RulesFilePathLength</code></td><td>Prevent commits that include file paths that exceed a specified character limit from being pushed to the commit graph.</td></tr>
 <tr><td><code>RulesFileExtensionRestriction</code></td><td>Restrictions on file extensions for the ruleset.</td></tr>
 <tr><td><code>RulesMaxFileSize</code></td><td>Maximum file size allowed to be pushed to the commit.</td></tr>
-<tr><td><code>RulesWorkflows</code></td><td>Require all changes made to a targeted branch to pass the specified workflows before they can be merged. An array of workflow rules, in the format `do_not_enforce_on_create|workflows:{Path|ref|repository_id|sha}`</td></tr>
-<tr><td><code>RulesCodeScanning</code></td><td>Choose which tools must provide code scanning results before the reference is updated. An array of code scanning rules in the format `{Tool|SecurityAlertsThreshold|AlertsThreshold}`</td></tr>
+<tr><td><code>RulesWorkflows</code></td><td>Require all changes made to a targeted branch to pass the specified workflows before they can be merged. An array of workflow rules, in the format <code>do_not_enforce_on_create|workflows:{Path|ref|repository_id|sha}</code></td></tr>
+<tr><td><code>RulesCodeScanning</code></td><td>Choose which tools must provide code scanning results before the reference is updated. An array of code scanning rules in the format <code>{Tool|SecurityAlertsThreshold|AlertsThreshold}</code></td></tr>
+<tr><td><code>RulesCodeQuality</code></td><td>Require code quality checks to pass before the ref is updated. In the format <code>Severity:&lt;level&gt;</code>, where level is one of <code>errors</code>, <code>warnings_and_higher</code>, <code>notes_and_higher</code>, or <code>all</code>.</td></tr>
+<tr><td><code>RulesCopilotCodeReview</code></td><td>Request an automatic review from Copilot on matching pull requests. In the format <code>ReviewDraftPullRequests:&lt;bool&gt;|ReviewOnPush:&lt;bool&gt;</code>.</td></tr>
+<tr><td><code>RulesLicenseComplianceScanning</code></td><td>Require license compliance scanning results before the ref is updated.</td></tr>
+<tr><td><code>RulesCodeCoverage</code></td><td>Require a minimum code coverage threshold before the ref is updated. In the format <code>MinimumCoverage:&lt;int&gt;|MaxCoverageDrop:&lt;int&gt;</code>.</td></tr>
 <tr><td><code>CreatedAt</code></td><td>Timestamp of when the ruleset was created.</td></tr>
 <tr><td><code>UpdatedAt</code></td><td>Timestamp of when the ruleset was last updated.</td></tr>
 </table>
 </details>
 <!-- markdownlint-enable MD013 -->
+
+> [!NOTE]
+> Fields within multi-value columns (e.g. `RulesBranchNamePattern`, `RulesCommitMessagePattern`)
+> are written in a stable, alphabetically-sorted order. This keeps exports deterministic so
+> re-running `list` produces byte-identical output for unchanged rulesets, making before/after
+> diffs reliable.
 
 ### Create Repository Rulesets
 
@@ -155,14 +166,32 @@ Flags:
   -f, --from-file string         Path and Name of CSV file to create rulesets from
   -h, --help                     help for create
       --hostname string          GitHub Enterprise Server hostname (default "github.com")
-      --repo-mapping string      Path and Name of CSV file mapping source repository names to target repository names
   -R, --repos strings            List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)
   -r, --ruleType string          List rulesets for a specific application or all: {all|repoOnly|orgOnly} (default "all")
       --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
   -s, --source-org string        Name of the Source Organization to copy rulesets from
   -p, --source-pat string        GitHub personal access token for Source Organization (default "gh auth token")
+  -T, --target-repo string       Rename the destination repository when migrating a single repository's rulesets
   -t, --token string             GitHub personal access token for organization to write to (default "gh auth token")
 ```
+
+When migrating a **single repository** with `--source-org`, use `--target-repo` to create the
+rulesets under a different repository name (a repository rename). This is useful when the
+destination repository has been renamed relative to the source. `--target-repo` requires exactly
+one repository via `--repos` and cannot be combined with `--from-file` (a file already contains the
+destination repository name).
+
+```sh
+# Rename during a single-repo migration from a source organization
+$ gh migrate-rulesets create target-org --source-org source-org --repos old-repo --target-repo new-repo
+```
+
+When creating rulesets with `--from-file`, repository renames are driven by the CSV itself. Each
+repository-level row carries both a `SourceRepositoryName` and a `TargetRepositoryName` column. On
+export these values are identical; edit `TargetRepositoryName` to create the ruleset under a
+different destination repository. If `TargetRepositoryName` is empty, the destination defaults to
+`SourceRepositoryName`. Files exported by earlier versions that only contain a `RepositoryName`
+column remain supported and are treated as the source (and target) repository name.
 
 If specifying `--source-org` and/or `--repos`, the CLI extension performs a live read from the source
 organization and attempts to map each object based on name to the new ID under the target organization:
@@ -184,10 +213,6 @@ custom roles, required workflow repositories, or status check integrations.
 residency through `--hostname` and `--source-hostname`. Both hostname flags default to `github.com`;
 use the target hostname with `--hostname` and the source hostname with `--source-hostname`.
 
-> [!NOTE]
-> If a ruleset fails to be created, a ruleset's Source, Name, and Error will be written to a `csv`
-> file in the current directory with the name format `<org>-ruleset-errors-<date>.csv`.
-
 #### Previewing changes
 
 Use `--dry-run` to log the org and repository rulesets that would be created without writing any
@@ -195,18 +220,6 @@ changes to the target:
 
 ```sh
 gh migrate-rulesets create <target-org> --source-org <source-org> --dry-run
-```
-
-#### Mapping repository names
-
-If source repositories have different names in the target organization, use `--repo-mapping` with a
-headered `csv` file. The mapping is applied to both `--from-file` and `--source-org` inputs and is
-used for the target ruleset location and required workflow repository references.
-
-```csv
-source,target
-api-service,api-service-prod
-web-app,frontend
 ```
 
 #### Mapping bypass actor IDs
@@ -276,3 +289,20 @@ values to fill into `actor-mapping.csv`.
 > [!NOTE]
 > If a bypass actor ID is not mapped and cannot be resolved automatically, the ruleset is skipped and
 > written to the error `csv` file for manual follow-up.
+
+When the command finishes it logs a summary of how many rulesets were created successfully and how
+many failed, for example:
+
+```text
+Summary: 12 ruleset(s) created successfully, 2 failed
+```
+
+> [!NOTE]
+> Any ruleset that fails to be created is captured and written to a `csv` file in the current
+> directory with the name format `<org>-ruleset-errors-<date>.csv`, containing the `Source`,
+> `RulesetName`, and `Error`. `Source` is where creation was attempted: for repository-level
+> rulesets it is in `org/repo` format (reflecting any `--target-repo` or `TargetRepositoryName`
+> rename), and for organization-level rulesets it is the organization name. This includes
+> per-ruleset creation failures as well as failures to fetch organization or repository rulesets
+> from the source (recorded with a `RulesetName` of `N/A`), so all issues are available for easy
+> review.

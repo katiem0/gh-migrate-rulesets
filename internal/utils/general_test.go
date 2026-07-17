@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"fmt"
+	"net/http"
 	"testing"
 )
 
@@ -74,5 +76,21 @@ func TestGetNextPageURL(t *testing.T) {
 }
 
 func TestRepoExists(t *testing.T) {
-	t.Skip("RepoExists requires a REST client mock - tested via integration/E2E tests")
+	t.Run("existing repo returns true", func(t *testing.T) {
+		g := newTestAPIGetter(t, func(_ *http.Request) (*http.Response, error) {
+			return jsonResponse(200, `{"id":1}`), nil
+		})
+		if !g.RepoExists("testorg/repo") {
+			t.Error("RepoExists() = false, want true")
+		}
+	})
+
+	t.Run("missing repo returns false", func(t *testing.T) {
+		g := newTestAPIGetter(t, func(_ *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("not found")
+		})
+		if g.RepoExists("testorg/missing") {
+			t.Error("RepoExists() = true, want false")
+		}
+	})
 }

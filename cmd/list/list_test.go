@@ -136,6 +136,21 @@ func TestNewCmdList(t *testing.T) {
 	}
 }
 
+func TestNewCmdListInvalidRuleType(t *testing.T) {
+	cmd := NewCmdList()
+	cmd.SetArgs([]string{"test-org", "--ruleType", "bogus"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("NewCmdList() Execute() expected error for invalid ruleType, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid ruleType") {
+		t.Errorf("NewCmdList() Execute() error = %v, want to contain 'invalid ruleType'", err)
+	}
+}
+
 func TestRunCmdList(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -249,6 +264,9 @@ func TestRunCmdList(t *testing.T) {
 					contentStr := string(content)
 					if !strings.Contains(contentStr, "RulesetLevel") {
 						t.Error("Output file missing expected CSV headers")
+					}
+					if !strings.Contains(contentStr, "SourceRepositoryName") || !strings.Contains(contentStr, "TargetRepositoryName") {
+						t.Error("Output file missing SourceRepositoryName/TargetRepositoryName headers")
 					}
 				}
 			}

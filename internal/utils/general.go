@@ -54,7 +54,7 @@ func GetAuthToken(token, hostname string) string {
 type Getter interface {
 	CreateOrgLevelRuleset(owner string, data io.Reader) error
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error
-	CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int, repoMapping map[string]string) []data.RepoRuleset
+	CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
@@ -72,17 +72,17 @@ type Getter interface {
 	GetReposList(owner string, endCursor *string) (*data.ReposQuery, error)
 	GetTeamByName(owner string, teamSlug string) (*data.TeamInfo, error)
 	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
-	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string, repoMapping map[string]string) *data.Parameters
+	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters
 	ParametersToMap(params data.Parameters, ruleType string) map[string]string
 	ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor
-	ParseRequiredWorkflowsForImport(owner string, value interface{}, repoMapping map[string]string) []data.Workflows
+	ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
 	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
 	UpdateOrgLevelRuleset(owner string, rulesetId int, data io.Reader) error
 	UpdateRepoLevelRuleset(ownerRepo string, rulesetId int, data io.Reader) error
-	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter, repoMapping map[string]string) data.RepoRuleset
+	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 	UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
 

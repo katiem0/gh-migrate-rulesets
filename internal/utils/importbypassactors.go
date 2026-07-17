@@ -101,6 +101,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 			continue
 		}
 		if actor.ActorID == nil {
+			zap.S().Warnf("Skipping bypass actor with nil ActorID (type %s) in ruleset %s", actor.ActorType, ruleset.Name)
 			continue
 		}
 		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
