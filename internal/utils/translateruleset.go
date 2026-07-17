@@ -9,6 +9,6 @@ import "github.com/katiem0/gh-migrate-rulesets/internal/data"
 func TranslateRuleset(g, s Getter, owner, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, actorMapping map[string]int) data.RepoRuleset {
 	updated := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, ruleset, s, actorMapping)
 	updated = g.UpdateRequiredWorkflowRepoID(owner, updated, s)
-	updated = g.UpdateStatusCheckIntegrationID(owner, sourceOrg, updated, s)
+	updated = g.UpdateStatusCheckIntegrationID(sourceOrg, updated, s)
 	return updated
 }

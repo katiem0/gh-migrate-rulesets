@@ -19,7 +19,7 @@ func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr str
 			zap.S().Debug("No Bypass Actor data found")
 			continue
 		}
-		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+		// Explicit mapping wins: covers predefined repository roles (no name lookup API) and renamed actors.
 		if sourceID, err := strconv.Atoi(actorData[0]); err == nil {
 			if targetID, ok := resolveMappedActorID(actorMapping, actorData[1], sourceID); ok {
 				zap.S().Debugf("Applying actor mapping for %s %d -> %d", actorData[1], sourceID, targetID)
@@ -104,7 +104,7 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 			zap.S().Warnf("Skipping bypass actor with nil ActorID (type %s) in ruleset %s", actor.ActorType, ruleset.Name)
 			continue
 		}
-		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+		// Explicit mapping wins: covers predefined repository roles (no name lookup API) and renamed actors.
 		if targetID, ok := resolveMappedActorID(actorMapping, actor.ActorType, *actor.ActorID); ok {
 			zap.S().Debugf("Applying actor mapping for %s %d -> %d", actor.ActorType, *actor.ActorID, targetID)
 			mappedID := targetID

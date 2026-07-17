@@ -56,6 +56,9 @@ func NewCmdCreate() *cobra.Command {
 				}
 			}
 			if len(cmdFlags.actorMapping) > 0 {
+				if len(cmdFlags.fileName) > 0 {
+					return errors.New("`--actor-mapping` cannot be used with `--from-file`; update the target IDs directly in the file")
+				}
 				if _, err := os.Stat(cmdFlags.actorMapping); err != nil {
 					return fmt.Errorf("actor mapping file not found: %w", err)
 				}
@@ -91,7 +94,7 @@ func NewCmdCreate() *cobra.Command {
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "source-hostname", "", "github.com", "GitHub Enterprise Server hostname where rulesets are copied from")
 	createCmd.Flags().StringVarP(&cmdFlags.fileName, "from-file", "f", "", "Path and Name of CSV file to create rulesets from")
-	createCmd.Flags().StringVarP(&cmdFlags.actorMapping, "actor-mapping", "", "", "Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)")
+	createCmd.Flags().StringVarP(&cmdFlags.actorMapping, "actor-mapping", "", "", "Path and Name of CSV file mapping source bypass actor IDs to target IDs (for predefined repository roles and renamed actors)")
 	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)")
 	createCmd.Flags().StringVarP(&cmdFlags.targetRepo, "target-repo", "T", "", "Rename the destination repository when migrating a single repository's rulesets")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
@@ -110,11 +113,6 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 	var importRepoRulesetsList []data.RepoRuleset
 	var errorRulesets []data.ErrorRulesets
 	successCount := 0
-
-	actorMapping, err := utils.LoadActorMapping(cmdFlags.actorMapping)
-	if err != nil {
-		return err
-	}
 
 	zap.S().Infof("Reading in file %s to identify repository rulesets", cmdFlags.fileName)
 	if len(cmdFlags.fileName) > 0 {
@@ -136,10 +134,9 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 			zap.S().Errorf("Error arose reading assignments from csv file")
 			return err
 		}
-		// From-file rulesets are assumed to already reference target IDs; only bypass
-		// actor mapping is applied here. Live required-workflow/status-check ID
-		// translation requires a source client and runs only in the --source-org path.
-		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData, actorMapping)
+		// From-file rulesets already carry target IDs (including bypass actors);
+		// mapping and live ID translation apply only to the --source-org path.
+		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData, nil)
 		for _, ruleset := range importRepoRulesetsList {
 			execErr := utils.SafeExecute(func() error {
 				createRuleset, err := utils.ProcessRulesets(ruleset)
@@ -229,6 +226,11 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 			return err
 		} else {
 			sourceOrgID = sourceOrgIDData.Organization.DatabaseID
+
+			actorMapping, err := utils.LoadActorMapping(cmdFlags.actorMapping)
+			if err != nil {
+				return err
+			}
 
 			zap.S().Infoln("Reading in rulesets from source organization", sourceOrg)
 

@@ -160,7 +160,7 @@ Usage:
   migrate-rules create [flags] <organization>
 
 Flags:
-      --actor-mapping string     Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)
+      --actor-mapping string     Path and Name of CSV file mapping source bypass actor IDs to target IDs (for predefined repository roles and renamed actors)
   -d, --debug                    To debug logging
       --dry-run                  Preview ruleset creates without writing changes
   -f, --from-file string         Path and Name of CSV file to create rulesets from
@@ -205,9 +205,10 @@ organization and attempts to map each object based on name to the new ID under t
 - Required Workflow
   - Repository
 
-This automatic name-based translation resolves the IDs called out in the warning above, so the
-`list` → `create --from-file` workflow no longer requires manual `csv` edits for teams, integrations,
-custom roles, required workflow repositories, or status check integrations.
+This automatic name-based translation applies to the live `--source-org` (and optional `--repos`)
+path and resolves the IDs called out in the warning above for teams, integrations, custom roles,
+required workflow repositories, and status check integrations. The `--from-file` path is assumed to
+already contain the correct target IDs; edit the exported `csv` directly before importing it.
 
 `create` supports GitHub.com, GitHub Enterprise Server, and GitHub Enterprise Cloud with data
 residency through `--hostname` and `--source-hostname`. Both hostname flags default to `github.com`;
@@ -225,15 +226,16 @@ gh migrate-rulesets create <target-org> --source-org <source-org> --dry-run
 #### Mapping bypass actor IDs
 
 Bypass actors for **teams**, **integrations/apps**, and **custom repository roles** are translated
-automatically by name or slug against the target organization. **Base repository roles** (e.g.
+automatically by name or slug against the target organization. **Predefined repository roles** (e.g.
 `Write`, `Maintain`, `Admin`) cannot be resolved this way, because GitHub does not expose an API to
-look up base role IDs by name on the target. Their IDs are consistent across GitHub.com and GitHub
+look up predefined role IDs by name on the target. Their IDs are consistent across GitHub.com and GitHub
 Enterprise Cloud, but can differ on GitHub Enterprise Cloud with data residency (`*.ghe.com`) tenants.
 
 For those cases, supply an actor mapping `csv` with `--actor-mapping`. Each row maps a source actor
-ID to the corresponding target ID, keyed by `actor_type` and `source_id`. The mapping is applied to
-both `--from-file` and `--source-org` inputs. A ready-to-fill template is provided at
-[`docs/actor-mapping-template.csv`](docs/actor-mapping-template.csv):
+ID to the corresponding target ID, keyed by `actor_type` and `source_id`. The mapping applies only to
+the live `--source-org` path. For `--from-file`, set the target IDs directly in the exported `csv`'s
+bypass actor column; `--actor-mapping` cannot be combined with `--from-file`. A ready-to-fill
+template is provided at [`docs/actor-mapping-template.csv`](docs/actor-mapping-template.csv):
 
 ```csv
 actor_type,source_id,source_name,target_id
@@ -247,44 +249,8 @@ to the automatic name-based resolution, so you only need to fill in the IDs the 
 differs on. An explicit mapping entry always wins, so `--actor-mapping` can also override a renamed
 team, app, or custom role.
 
-##### Finding base repository role IDs for your instance
-
-Base repository role IDs (e.g. `Write`, `Maintain`, `Admin`) are not exposed by any lookup API and can
-differ per platform, so you may need to confirm them on both the source and target.
-
-The following IDs have been observed per platform. Treat them as a starting reference and verify against
-your own instances before relying on them, as they are not officially guaranteed to be stable:
-
-| Platform | `write` | `maintain` | `admin` |
-| --- | --- | --- | --- |
-| GitHub Enterprise Server (GHES) | 2 | 5 | 3 |
-| GitHub Enterprise Cloud (GHEC) / EMU | 4 | 2 | 5 |
-| Data residency — US (`ghe.com`) | 6 | 21 | 11 |
-
-To confirm the IDs on any instance yourself:
-
-1. In a single repository, create three rulesets and give each one a bypass actor for a different base
-   role (`Maintain`, `Write`, `Admin`). Naming each ruleset after its bypass actor makes the output
-   easier to read.
-2. Run the following against that instance to list each ruleset's bypass actor IDs:
-
-```sh
-export GH_HOST="ghes.example.com" # only needed for GitHub Enterprise Server
-
-ORG="ORG"
-REPO="repo"
-
-gh api "/repos/$ORG/$REPO/rulesets" --jq '.[].id' |
-while read -r id; do
-  gh api "/repos/$ORG/$REPO/rulesets/$id"
-done | jq -s '[.[] | {
-  name,
-  bypass_actors: [.bypass_actors[]? | {actor_id, actor_type, bypass_mode}]
-}]'
-```
-
-Repeat this on both the source and target instances to determine the `source_id` and `target_id`
-values to fill into `actor-mapping.csv`.
+For instance-specific predefined repository role IDs (e.g. GitHub Enterprise Cloud with data residency),
+see [docs/predefined-repository-roles.md](docs/predefined-repository-roles.md).
 
 > [!NOTE]
 > If a bypass actor ID is not mapped and cannot be resolved automatically, the ruleset is skipped and

@@ -100,7 +100,7 @@ func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string,
 	return ruleset
 }
 
-func (m *MockWorkflowGetter) UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (m *MockWorkflowGetter) UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
 	return ruleset
 }
 

@@ -5,7 +5,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (g *APIGetter) UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
 	for i, rule := range ruleset.Rules {
 		if rule.Type == "required_status_checks" && rule.Parameters != nil {
 			sourceAppIntegration, err := s.GetAppInstallations(sourceOrg)

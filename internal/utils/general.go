@@ -81,7 +81,7 @@ type Getter interface {
 	RepoExists(ownerRepo string) bool
 	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
 	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
-	UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
 
 type APIGetter struct {

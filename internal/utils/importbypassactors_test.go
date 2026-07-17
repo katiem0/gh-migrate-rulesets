@@ -48,7 +48,7 @@ func TestParseBypassActorsForImport(t *testing.T) {
 			wantCount:       0,
 		},
 		{
-			name:            "base role remapped via actor mapping",
+			name:            "predefined role remapped via actor mapping",
 			owner:           "testorg",
 			bypassActorsStr: "5;RepositoryRole;Admin;always",
 			actorMapping:    map[string]int{actorMappingKey("RepositoryRole", 5): 42},
@@ -137,7 +137,7 @@ func TestUpdateBypassActorID(t *testing.T) {
 			wantActors: 2,
 		},
 		{
-			name:        "base role overridden by actor mapping",
+			name:        "predefined role overridden by actor mapping",
 			owner:       "neworg",
 			sourceOrg:   "oldorg",
 			sourceOrgID: 12345,

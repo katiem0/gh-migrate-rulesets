@@ -210,7 +210,7 @@ func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.
 	return ruleset
 }
 
-func (m *MockAPIGetter) UpdateStatusCheckIntegrationID(owner string, sourceOrg string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
+func (m *MockAPIGetter) UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
 	return ruleset
 }
 
@@ -288,8 +288,14 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 			errMessage: "specify only one of",
 		},
 		{
+			name:       "actor-mapping with from-file",
+			args:       []string{"--from-file", "test.csv", "--actor-mapping", "mapping.csv"},
+			wantErr:    true,
+			errMessage: "`--actor-mapping` cannot be used with `--from-file`",
+		},
+		{
 			name:       "missing actor mapping file",
-			args:       []string{"--from-file", "test.csv", "--actor-mapping", "does-not-exist.csv"},
+			args:       []string{"--source-org", "testorg", "--actor-mapping", "does-not-exist.csv"},
 			wantErr:    true,
 			errMessage: "actor mapping file not found",
 		},
