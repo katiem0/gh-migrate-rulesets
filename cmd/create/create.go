@@ -24,9 +24,11 @@ type cmdFlags struct {
 	token          string
 	hostname       string
 	fileName       string
+	actorMapping   string
 	repos          []string
 	targetRepo     string
 	ruleType       string
+	dryRun         bool
 	debug          bool
 }
 
@@ -51,6 +53,14 @@ func NewCmdCreate() *cobra.Command {
 				}
 				if len(cmdFlags.repos) != 1 {
 					return errors.New("`--target-repo` requires exactly one repository via `--repos`")
+				}
+			}
+			if len(cmdFlags.actorMapping) > 0 {
+				if len(cmdFlags.fileName) > 0 {
+					return errors.New("`--actor-mapping` cannot be used with `--from-file`; actor mapping only applies when reading from a source organization via `--source-org`")
+				}
+				if _, err := os.Stat(cmdFlags.actorMapping); err != nil {
+					return fmt.Errorf("actor mapping file not found: %w", err)
 				}
 			}
 			return nil
@@ -81,12 +91,14 @@ func NewCmdCreate() *cobra.Command {
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.token, "token", "t", "", `GitHub personal access token for organization to write to (default "gh auth token")`)
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceToken, "source-pat", "p", "", `GitHub personal access token for Source Organization (default "gh auth token")`)
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceOrg, "source-org", "s", "", `Name of the Source Organization to copy rulesets from`)
-	createCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "hostname", "", "github.com", "GitHub Enterprise Server hostname")
-	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "source-hostname", "", "github.com", "GitHub Enterprise Server hostname where rulesets are copied from")
+	createCmd.PersistentFlags().StringVarP(&cmdFlags.hostname, "target-hostname", "", "github.com", "Target GitHub hostname: GHES (github.example.com), or data residency (tenant.ghe.com)")
+	createCmd.PersistentFlags().StringVarP(&cmdFlags.sourceHostname, "hostname", "", "github.com", "Source GitHub hostname: GHES (github.example.com), or data residency (tenant.ghe.com)")
 	createCmd.Flags().StringVarP(&cmdFlags.fileName, "from-file", "f", "", "Path and Name of CSV file to create rulesets from")
+	createCmd.Flags().StringVarP(&cmdFlags.actorMapping, "actor-mapping", "", "", "Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)")
 	createCmd.Flags().StringSliceVarP(&cmdFlags.repos, "repos", "R", []string{}, "List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)")
 	createCmd.Flags().StringVarP(&cmdFlags.targetRepo, "target-repo", "T", "", "Rename the destination repository when migrating a single repository's rulesets")
 	createCmd.PersistentFlags().StringVarP(&cmdFlags.ruleType, "ruleType", "r", ruleDefault, "List rulesets for a specific application or all: {all|repoOnly|orgOnly}")
+	createCmd.Flags().BoolVarP(&cmdFlags.dryRun, "dry-run", "", false, "Preview ruleset creates without writing changes")
 	createCmd.PersistentFlags().BoolVarP(&cmdFlags.debug, "debug", "d", false, "To debug logging")
 
 	return createCmd
@@ -101,6 +113,11 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 	var importRepoRulesetsList []data.RepoRuleset
 	var errorRulesets []data.ErrorRulesets
 	successCount := 0
+
+	actorMapping, err := utils.LoadActorMapping(cmdFlags.actorMapping)
+	if err != nil {
+		return err
+	}
 
 	zap.S().Infof("Reading in file %s to identify repository rulesets", cmdFlags.fileName)
 	if len(cmdFlags.fileName) > 0 {
@@ -122,7 +139,9 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 			zap.S().Errorf("Error arose reading assignments from csv file")
 			return err
 		}
-		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData)
+		// Actor mapping does not apply to --from-file; the CSV already carries the
+		// destination actor IDs (see PreRunE guard).
+		importRepoRulesetsList = g.CreateRepoRulesetsData(owner, rulesetData, nil)
 		for _, ruleset := range importRepoRulesetsList {
 			execErr := utils.SafeExecute(func() error {
 				createRuleset, err := utils.ProcessRulesets(ruleset)
@@ -145,6 +164,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 				reader := bytes.NewReader(createRulesetJSON)
 				switch ruleset.SourceType {
 				case "Organization":
+					if cmdFlags.dryRun {
+						zap.S().Infof("[dry-run] would create org ruleset %s under %s", createRuleset.Name, owner)
+						return nil
+					}
 					zap.S().Debugf("Creating organization rulesets under %s", owner)
 					err = g.CreateOrgLevelRuleset(owner, reader)
 					if err != nil {
@@ -173,6 +196,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 						zap.S().Debugf("Repository %s does not exist", destSource)
 						errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: destSource, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
 						zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, destSource, ruleset.Source, "Repository does not exist")
+						return nil
+					}
+					if cmdFlags.dryRun {
+						zap.S().Infof("[dry-run] would create repo ruleset %s under %s", createRuleset.Name, destSource)
 						return nil
 					}
 					zap.S().Debugf("Creating rulesets under %s", destSource)
@@ -230,7 +257,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: sourceOrg, RulesetName: singleRule.Name, Error: err.Error()})
 							return nil
 						}
-						updatedOrgLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, orgLevelRuleset, s)
+						updatedOrgLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, orgLevelRuleset, s, actorMapping)
 						updatedOrgWorkflowRuleset := g.UpdateRequiredWorkflowRepoID(owner, updatedOrgLevelRuleset, s)
 						createRuleset, err := utils.ProcessRulesets(updatedOrgWorkflowRuleset)
 						if err != nil {
@@ -245,6 +272,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 							return nil
 						}
 						reader := bytes.NewReader(createRulesetJSON)
+						if cmdFlags.dryRun {
+							zap.S().Infof("[dry-run] would create org ruleset %s under %s", createRuleset.Name, owner)
+							return nil
+						}
 						zap.S().Debugf("Creating rulesets under target organization %s", owner)
 						err = g.CreateOrgLevelRuleset(owner, reader)
 						if err != nil {
@@ -294,7 +325,7 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: singleRepoRule.RepoName, RulesetName: singleRepoRule.Rule.Name, Error: err.Error()})
 								return nil
 							}
-							updatedRepoLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, repoLevelRuleset, s)
+							updatedRepoLevelRuleset := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, repoLevelRuleset, s, actorMapping)
 							updatedRepoWorkflowRuleset := g.UpdateRequiredWorkflowRepoID(owner, updatedRepoLevelRuleset, s)
 							createRuleset, err := utils.ProcessRulesets(updatedRepoWorkflowRuleset)
 							if err != nil {
@@ -328,6 +359,10 @@ func runCmdCreate(owner string, cmdFlags *cmdFlags, g utils.Getter, s utils.Gett
 								zap.S().Debugf("Repository %s does not exist in %s", repoName, owner)
 								errorRulesets = append(errorRulesets, data.ErrorRulesets{Source: newSource, RulesetName: createRuleset.Name, Error: "Repository does not exist"})
 								zap.S().Infof("Error creating ruleset %s for %s (source repo %s): %s", createRuleset.Name, newSource, repoLevelRuleset.Source, "Repository does not exist")
+								return nil
+							}
+							if cmdFlags.dryRun {
+								zap.S().Infof("[dry-run] would create repo ruleset %s under %s", createRuleset.Name, newSource)
 								return nil
 							}
 							err = g.CreateRepoLevelRuleset(newSource, reader)

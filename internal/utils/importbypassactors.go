@@ -8,16 +8,29 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	bypassActors := strings.Split(bypassActorsStr, "|")
 	actors := make([]data.BypassActor, 0, len(bypassActors))
 	var actorID *int
 
 	for _, actor := range bypassActors {
 		actorData := strings.Split(actor, ";")
-		if len(actorData) < 2 {
+		if len(actorData) < 4 {
 			zap.S().Debug("No Bypass Actor data found")
 			continue
+		}
+		// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+		if sourceID, err := strconv.Atoi(actorData[0]); err == nil {
+			if targetID, ok := resolveMappedActorID(actorMapping, actorData[1], sourceID); ok {
+				zap.S().Debugf("Applying actor mapping for %s %d -> %d", actorData[1], sourceID, targetID)
+				mappedID := targetID
+				actors = append(actors, data.BypassActor{
+					ActorID:    &mappedID,
+					ActorType:  actorData[1],
+					BypassMode: actorData[3],
+				})
+				continue
+			}
 		}
 		if _, ok := data.RolesMap[actorData[0]]; !ok {
 			zap.S().Debugf("Gathering appropriate IDs for Bypass Actor: %s", actorData[2])
@@ -79,7 +92,7 @@ func (g *APIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr str
 	return actors
 }
 
-func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset {
 	zap.S().Debugf("Updating Bypass Actor ID for new org %s", owner)
 
 	for i, actor := range ruleset.BypassActors {
@@ -89,6 +102,13 @@ func (g *APIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOr
 		} else {
 			if actor.ActorID == nil {
 				zap.S().Warnf("Skipping bypass actor with nil ActorID (type %s) in ruleset %s", actor.ActorType, ruleset.Name)
+				continue
+			}
+			// Explicit mapping wins: covers base repository roles (no name lookup API) and renamed actors.
+			if targetID, ok := resolveMappedActorID(actorMapping, actor.ActorType, *actor.ActorID); ok {
+				zap.S().Debugf("Applying actor mapping for %s %d -> %d", actor.ActorType, *actor.ActorID, targetID)
+				mappedID := targetID
+				ruleset.BypassActors[i].ActorID = &mappedID
 				continue
 			}
 			if _, ok := data.RolesMap[strconv.Itoa(*actor.ActorID)]; !ok {

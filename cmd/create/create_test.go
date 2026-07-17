@@ -45,7 +45,7 @@ func (m *MockAPIGetter) RepoExists(ownerRepo string) bool {
 	return m.RepoExistsResult
 }
 
-func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (m *MockAPIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset {
 	if m.RepoRulesetsFromFile != nil {
 		return m.RepoRulesetsFromFile
 	}
@@ -186,7 +186,7 @@ func (m *MockAPIGetter) ParametersToMap(params data.Parameters, ruleType string)
 	return map[string]string{}
 }
 
-func (m *MockAPIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (m *MockAPIGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	return []data.BypassActor{}
 }
 
@@ -202,7 +202,7 @@ func (m *MockAPIGetter) ProcessRules(rules []data.Rules) map[string]string {
 	return map[string]string{}
 }
 
-func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
+func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter, actorMapping map[string]int) data.RepoRuleset {
 	return ruleset
 }
 
@@ -256,6 +256,12 @@ func TestNewCmdCreate(t *testing.T) {
 	if !strings.Contains(cmd.Short, "Create repository rulesets") {
 		t.Errorf("NewCmdCreate() Short description incorrect")
 	}
+
+	for _, flagName := range []string{"actor-mapping", "dry-run"} {
+		if cmd.Flags().Lookup(flagName) == nil {
+			t.Errorf("NewCmdCreate() missing flag %q", flagName)
+		}
+	}
 }
 
 func TestCmdCreate_PreRunE(t *testing.T) {
@@ -294,6 +300,18 @@ func TestCmdCreate_PreRunE(t *testing.T) {
 			args:       []string{"--from-file", "test.csv", "--target-repo", "renamed"},
 			wantErr:    true,
 			errMessage: "cannot be used with `--from-file`",
+		},
+		{
+			name:       "actor mapping with from-file",
+			args:       []string{"--from-file", "test.csv", "--actor-mapping", "mapping.csv"},
+			wantErr:    true,
+			errMessage: "`--actor-mapping` cannot be used with `--from-file`",
+		},
+		{
+			name:       "missing actor mapping file",
+			args:       []string{"--source-org", "testorg", "--actor-mapping", "does-not-exist.csv"},
+			wantErr:    true,
+			errMessage: "actor mapping file not found",
 		},
 	}
 
@@ -372,6 +390,18 @@ Repository,test-repo,test-repo,2,repo-level-ruleset,branch,active,,,,,,,,,,true,
 			mockGetter: &MockAPIGetter{
 				RepoExistsResult: true,
 				ShouldError:      true,
+			},
+			wantErr: false,
+		},
+		{
+			name:  "dry-run skips creation from file",
+			owner: "testorg",
+			cmdFlags: &cmdFlags{
+				fileName: tmpFile.Name(),
+				dryRun:   true,
+			},
+			mockGetter: &MockAPIGetter{
+				RepoExistsResult: true,
 			},
 			wantErr: false,
 		},
@@ -483,6 +513,31 @@ func TestRunCmdCreate_FromSourceOrg(t *testing.T) {
 				ShouldError: true, // Source API fails
 			},
 			wantErr: true,
+		},
+		{
+			name:  "dry-run skips creation from source org",
+			owner: "target-org",
+			cmdFlags: &cmdFlags{
+				sourceOrg: "source-org",
+				ruleType:  "all",
+				dryRun:    true,
+			},
+			mockGetter: &MockAPIGetter{
+				RepoExistsResult: true,
+			},
+			mockSource: &MockAPIGetter{
+				OrgID: 123,
+				OrgRulesets: []data.Rulesets{
+					{ID: "R_1", DatabaseID: 1, Name: "org-ruleset"},
+				},
+				Repos: []data.RepoInfo{
+					{DatabaseId: 10, Name: "repo1"},
+				},
+				RepoRulesets: []data.RepoNameRule{
+					{RepoName: "repo1", Rule: data.Rulesets{ID: "R_2", DatabaseID: 2, Name: "repo-ruleset"}},
+				},
+			},
+			wantErr: false,
 		},
 	}
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -53,7 +54,7 @@ func GetAuthToken(token, hostname string) string {
 type Getter interface {
 	CreateOrgLevelRuleset(owner string, data io.Reader) error
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error
-	CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset
+	CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
@@ -73,12 +74,12 @@ type Getter interface {
 	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
 	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters
 	ParametersToMap(params data.Parameters, ruleType string) map[string]string
-	ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor
+	ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor
 	ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
-	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
 	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
 }
 
@@ -277,7 +278,6 @@ func (g *APIGetter) GetAppInstallations(owner string) (*data.AppIntegrations, er
 }
 
 func getNextPageURL(linkHeader string) string {
-	const prefix = "https://api.github.com/"
 	links := strings.Split(linkHeader, ",")
 	for _, link := range links {
 		parts := strings.Split(strings.TrimSpace(link), ";")
@@ -287,10 +287,33 @@ func getNextPageURL(linkHeader string) string {
 		urlPart := strings.Trim(parts[0], "<>")
 		relPart := strings.TrimSpace(parts[1])
 		if relPart == `rel="next"` {
-			return strings.TrimPrefix(urlPart, prefix)
+			return toRelativeAPIPath(urlPart)
 		}
 	}
 	return ""
+}
+
+// toRelativeAPIPath converts an absolute pagination URL from a Link header into a
+// host-relative path so it can be re-issued through the configured REST client
+// regardless of the target host. This keeps pagination working across GitHub.com,
+// GitHub Enterprise Server (paths under /api/v3), and GitHub Enterprise Cloud with
+// data residency (api.<tenant>.ghe.com).
+func toRelativeAPIPath(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	path := u.Path
+	// GHES serves the REST API under /api/v3; strip it so the client can re-add
+	// the correct prefix for the target host.
+	if path == "/api/v3" || strings.HasPrefix(path, "/api/v3/") {
+		path = strings.TrimPrefix(path, "/api/v3")
+	}
+	path = strings.TrimPrefix(path, "/")
+	if u.RawQuery != "" {
+		return fmt.Sprintf("%s?%s", path, u.RawQuery)
+	}
+	return path
 }
 
 func (g *APIGetter) GetCustomRoles(owner string, roleID int) (*data.CustomRole, error) {

@@ -49,6 +49,21 @@ func TestGetNextPageURL(t *testing.T) {
 			want:       "orgs/test/repos?page=2",
 		},
 		{
+			name:       "ghes strips api v3 prefix",
+			linkHeader: `<https://github.example.com/api/v3/orgs/test/repos?page=2>; rel="next", <https://github.example.com/api/v3/orgs/test/repos?page=5>; rel="last"`,
+			want:       "orgs/test/repos?page=2",
+		},
+		{
+			name:       "ghe.com data residency",
+			linkHeader: `<https://api.tenant.ghe.com/orgs/test/repos?page=2>; rel="next"`,
+			want:       "orgs/test/repos?page=2",
+		},
+		{
+			name:       "next link without query",
+			linkHeader: `<https://api.github.com/orgs/test/repos>; rel="next"`,
+			want:       "orgs/test/repos",
+		},
+		{
 			name:       "no next link",
 			linkHeader: `<https://api.github.com/orgs/test/repos?page=1>; rel="first", <https://api.github.com/orgs/test/repos?page=5>; rel="last"`,
 			want:       "",

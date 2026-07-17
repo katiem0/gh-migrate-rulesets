@@ -21,6 +21,25 @@ func Contains(slice []string, item string) bool {
 	return false
 }
 
+// csvFieldValue safely returns the trimmed value at index from a CSV record,
+// returning an empty string when the index is out of range.
+func csvFieldValue(record []string, index int) string {
+	if index >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[index])
+}
+
+// isEmptyCSVRecord reports whether every field in a CSV record is blank.
+func isEmptyCSVRecord(record []string) bool {
+	for _, value := range record {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func SplitIgnoringBraces(s, delimiter string) []string {
 	var result []string
 	var currentSegment strings.Builder

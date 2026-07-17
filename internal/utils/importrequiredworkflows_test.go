@@ -55,7 +55,7 @@ func (m *MockWorkflowGetter) CreateRepoLevelRuleset(ownerRepo string, data io.Re
 	return nil
 }
 
-func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (m *MockWorkflowGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset {
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (m *MockWorkflowGetter) GetRepoCustomRoles(owner string) (*data.CustomRepoR
 	return &data.CustomRepoRoles{}, nil
 }
 
-func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (m *MockWorkflowGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset {
 	return ruleset
 }
 
@@ -145,7 +145,7 @@ func (m *MockWorkflowGetter) GetTeamByName(owner string, teamSlug string) (*data
 	return nil, nil
 }
 
-func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor {
+func (m *MockWorkflowGetter) ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor {
 	return nil
 }
 

@@ -568,7 +568,7 @@ func TestCreateRepoRulesetsData(t *testing.T) {
 	}
 	fileData := [][]string{header, row}
 
-	got := g.CreateRepoRulesetsData("testorg", fileData)
+	got := g.CreateRepoRulesetsData("testorg", fileData, nil)
 	if len(got) != 1 {
 		t.Fatalf("CreateRepoRulesetsData() returned %d rulesets, want 1", len(got))
 	}
@@ -600,7 +600,7 @@ func TestCreateRepoRulesetsData_TargetRepositoryRename(t *testing.T) {
 	}
 	fileData := [][]string{header, row}
 
-	got := g.CreateRepoRulesetsData("testorg", fileData)
+	got := g.CreateRepoRulesetsData("testorg", fileData, nil)
 	if len(got) != 1 {
 		t.Fatalf("CreateRepoRulesetsData() returned %d rulesets, want 1", len(got))
 	}
@@ -629,7 +629,7 @@ func TestCreateRepoRulesetsData_LegacyRepositoryNameHeader(t *testing.T) {
 	}
 	fileData := [][]string{header, row}
 
-	got := g.CreateRepoRulesetsData("testorg", fileData)
+	got := g.CreateRepoRulesetsData("testorg", fileData, nil)
 	if len(got) != 1 {
 		t.Fatalf("CreateRepoRulesetsData() returned %d rulesets, want 1", len(got))
 	}

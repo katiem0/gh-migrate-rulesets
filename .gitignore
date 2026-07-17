@@ -2,6 +2,7 @@
 /gh-migrate-rulesets.exe
 
 *.csv
+!docs/actor-mapping-template.csv
 
 .DS_Store
 .env

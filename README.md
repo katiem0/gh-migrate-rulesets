@@ -28,8 +28,23 @@ For more information: [`gh extension install`](https://cli.github.com/manual/gh_
 
 ## Usage
 
-The `gh-migrate-rulesets` extension supports `GitHub.com` and GitHub Enterprise Server,
-through the use of `--hostname` and the following commands:
+The `gh-migrate-rulesets` extension supports `GitHub.com`, GitHub Enterprise Server (GHES), and
+GitHub Enterprise Cloud with data residency (`*.ghe.com`), through the use of `--hostname`
+(target) and `--source-hostname` (source) and the following commands:
+
+> [!NOTE]
+> Provide the bare instance hostname, not an API URL. The correct API endpoint is derived
+> automatically for each platform:
+>
+> | Target | `--hostname` value | Resolved API endpoint |
+> | --- | --- | --- |
+> | GitHub.com | `github.com` (default) | `https://api.github.com` |
+> | GitHub Enterprise Server | `github.example.com` | `https://github.example.com/api/v3` |
+> | Data residency (`*.ghe.com`) | `tenant.ghe.com` | `https://api.tenant.ghe.com` |
+>
+> When copying between instances, set `--source-hostname` for where rulesets are read from and
+> `--hostname` for where they are created. Pagination and every API call honor the resolved
+> endpoint, so migrations to a GHES or `ghe.com` target work without editing URLs.
 
 ```sh
 $ gh migrate-rulesets -h
@@ -71,7 +86,7 @@ Usage:
 Flags:
   -d, --debug                To debug logging
   -h, --help                 help for list
-      --hostname string      GitHub Enterprise Server hostname (default "github.com")
+      --hostname string      Target GitHub hostname: GitHub.com, GHES (github.example.com), or data residency (tenant.ghe.com) (default "github.com")
   -o, --output-file string   Name of file to write CSV list to (default "ruleset-20240819094546.csv")
   -r, --ruleType string      List rulesets for a specific application or all: {all|repoOnly|orgOnly} (default "all")
   -t, --token string         GitHub Personal Access Token (default "gh auth token")
@@ -160,13 +175,15 @@ Usage:
   migrate-rules create [flags] <organization>
 
 Flags:
+      --actor-mapping string     Path and Name of CSV file mapping source bypass actor IDs to target IDs (for base repository roles and renamed actors)
   -d, --debug                    To debug logging
+      --dry-run                  Preview ruleset creates without writing changes
   -f, --from-file string         Path and Name of CSV file to create rulesets from
   -h, --help                     help for create
-      --hostname string          GitHub Enterprise Server hostname (default "github.com")
+      --hostname string          Target GitHub hostname: GitHub.com, GHES (github.example.com), or data residency (tenant.ghe.com) (default "github.com")
   -R, --repos strings            List of repositories names to recreate rulesets for separated by commas (i.e. repo1,repo2,repo3)
   -r, --ruleType string          List rulesets for a specific application or all: {all|repoOnly|orgOnly} (default "all")
-      --source-hostname string   GitHub Enterprise Server hostname where rulesets are copied from (default "github.com")
+      --source-hostname string   Source GitHub hostname rulesets are copied from: GitHub.com, GHES, or data residency (tenant.ghe.com) (default "github.com")
   -s, --source-org string        Name of the Source Organization to copy rulesets from
   -p, --source-pat string        GitHub personal access token for Source Organization (default "gh auth token")
   -T, --target-repo string       Rename the destination repository when migrating a single repository's rulesets
@@ -202,6 +219,40 @@ based on name to the new ID under the target organization:
   - Context
 - Required Workflow
   - Repository
+
+#### Previewing changes
+
+Use `--dry-run` to log the org and repository rulesets that would be created without writing any
+changes to the target:
+
+```sh
+$ gh migrate-rulesets create target-org --source-org source-org --dry-run
+```
+
+#### Mapping bypass actor IDs
+
+Bypass actors for **teams**, **integrations/apps**, and **custom repository roles** are translated
+automatically by name or slug against the target organization. **Base repository roles** (e.g.
+`Write`, `Maintain`, `Admin`) cannot be resolved this way, because GitHub does not expose an API to
+look up base role IDs by name on the target. Their IDs are consistent across GitHub.com and GitHub
+Enterprise Cloud, but can differ on GitHub Enterprise Cloud with data residency (`*.ghe.com`) tenants.
+
+For those cases, supply an actor mapping `csv` with `--actor-mapping`. Each row maps a source actor
+ID to the corresponding target ID, keyed by `actor_type` and `source_id`. The mapping is applied to
+both `--from-file` and `--source-org` inputs. A ready-to-fill template is provided at
+[`docs/actor-mapping-template.csv`](docs/actor-mapping-template.csv):
+
+```csv
+actor_type,source_id,source_name,target_id
+RepositoryRole,2,Maintain,2
+RepositoryRole,4,Write,4
+RepositoryRole,5,Admin,7
+```
+
+The `source_name` column is a reference only and is ignored. Rows with a blank `target_id` fall back
+to the automatic name-based resolution, so you only need to fill in the IDs the target org actually
+differs on. An explicit mapping entry always wins, so `--actor-mapping` can also override a renamed
+team, app, or custom role.
 
 When the command finishes it logs a summary of how many rulesets were created successfully and how
 many failed, for example:
