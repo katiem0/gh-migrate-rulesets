@@ -1,14 +1,17 @@
 package utils
 
-import "github.com/katiem0/gh-migrate-rulesets/internal/data"
+import (
+	"errors"
 
-// TranslateRuleset rewrites source IDs (bypass actors, required-workflow repos,
-// status-check integrations) to their equivalents in the target org. It is used by
-// the live --source-org path; --from-file rulesets are assumed to already reference
-// target IDs (only bypass actor mapping is applied during CSV parsing).
-func TranslateRuleset(g, s Getter, owner, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, actorMapping map[string]int) data.RepoRuleset {
-	updated := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, ruleset, s, actorMapping)
-	updated = g.UpdateRequiredWorkflowRepoID(owner, updated, s)
-	updated = g.UpdateStatusCheckIntegrationID(sourceOrg, updated, s)
-	return updated
+	"github.com/katiem0/gh-migrate-rulesets/internal/data"
+)
+
+// TranslateRuleset rewrites source IDs to their target-org equivalents. Only the
+// --source-org path uses it; --from-file rulesets already reference target IDs.
+func TranslateRuleset(g, s Getter, owner, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, actorMapping map[string]int) (data.RepoRuleset, error) {
+	// Separate vars so every stage still runs and reports after an earlier failure.
+	updated, bypassErr := g.UpdateBypassActorID(owner, sourceOrg, sourceOrgID, ruleset, s, actorMapping)
+	updated, workflowErr := g.UpdateRequiredWorkflowRepoID(owner, updated, s)
+	updated, statusErr := g.UpdateStatusCheckIntegrationID(sourceOrg, updated, s)
+	return updated, errors.Join(bypassErr, workflowErr, statusErr)
 }

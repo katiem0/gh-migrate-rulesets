@@ -1,14 +1,17 @@
 package create
 
 import (
+	"encoding/csv"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 	"github.com/katiem0/gh-migrate-rulesets/internal/utils"
 )
@@ -24,9 +27,12 @@ type MockAPIGetter struct {
 	FetchOrgRulesetsError  bool
 	FetchRepoRulesetsError bool
 	RepoRulesetsFromFile   []data.RepoRuleset
+	TranslateBypassErr     error
+	CreatedOrgCount        int
 }
 
 func (m *MockAPIGetter) CreateOrgLevelRuleset(owner string, data io.Reader) error {
+	m.CreatedOrgCount++
 	if m.ShouldError {
 		return errors.New("mock error creating org ruleset")
 	}
@@ -202,16 +208,16 @@ func (m *MockAPIGetter) ProcessRules(rules []data.Rules) map[string]string {
 	return map[string]string{}
 }
 
-func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter, actorMapping map[string]int) data.RepoRuleset {
-	return ruleset
+func (m *MockAPIGetter) UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s utils.Getter, actorMapping map[string]int) (data.RepoRuleset, error) {
+	return ruleset, m.TranslateBypassErr
 }
 
-func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
-	return ruleset
+func (m *MockAPIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s utils.Getter) (data.RepoRuleset, error) {
+	return ruleset, nil
 }
 
-func (m *MockAPIGetter) UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s utils.Getter) data.RepoRuleset {
-	return ruleset
+func (m *MockAPIGetter) UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s utils.Getter) (data.RepoRuleset, error) {
+	return ruleset, nil
 }
 
 func TestMain(m *testing.M) {
@@ -667,5 +673,147 @@ func TestRunCmdCreate_TargetRepoRename_ErrorRecordsDestination(t *testing.T) {
 	}
 	if !strings.Contains(content, "Repository does not exist") {
 		t.Errorf("error CSV missing failure reason, got:\n%s", content)
+	}
+}
+
+// TestRunCmdCreate_TranslationFailure_SkipsAndContinues also guards that the loop
+// continues to the next ruleset after a skip.
+func TestRunCmdCreate_TranslationFailure_SkipsAndContinues(t *testing.T) {
+	mockGetter := &MockAPIGetter{
+		RepoExistsResult: true,
+		// Two joined lookup errors for a single ruleset; recorded as one row.
+		TranslateBypassErr: errors.Join(
+			errors.New("bypass actor lookup failed"),
+			errors.New("required workflow lookup failed"),
+		),
+	}
+	mockSource := &MockAPIGetter{
+		OrgID: 123,
+		OrgRulesets: []data.Rulesets{
+			{ID: "R_1", DatabaseID: 1, Name: "org-ruleset-one"},
+			{ID: "R_2", DatabaseID: 2, Name: "org-ruleset-two"},
+		},
+	}
+
+	flags := &cmdFlags{sourceOrg: "translate-fail", ruleType: "orgOnly"}
+	if err := runCmdCreate("translate-fail", flags, mockGetter, mockSource); err != nil {
+		t.Fatalf("runCmdCreate() unexpected error = %v", err)
+	}
+
+	// Skipped, not created: creation must never be attempted for a failed translation.
+	if mockGetter.CreatedOrgCount != 0 {
+		t.Errorf("expected no org rulesets created, got %d", mockGetter.CreatedOrgCount)
+	}
+
+	records, err := csv.NewReader(strings.NewReader(readErrorCSV(t, "translate-fail"))).ReadAll()
+	if err != nil {
+		t.Fatalf("failed to parse error CSV: %v", err)
+	}
+
+	// Header + exactly one row per failed ruleset (two rulesets, not one row per lookup).
+	dataRows := records[1:]
+	if len(dataRows) != 2 {
+		t.Fatalf("expected 2 error rows (one per ruleset), got %d: %v", len(dataRows), dataRows)
+	}
+
+	names := map[string]bool{}
+	for _, row := range dataRows {
+		names[row[1]] = true
+		// Both joined lookup errors must survive in the single row (errors.Join semantics).
+		if !strings.Contains(row[2], "bypass actor lookup failed") || !strings.Contains(row[2], "required workflow lookup failed") {
+			t.Errorf("error row missing a joined lookup message: %q", row[2])
+		}
+	}
+	// Loop continued: both rulesets were processed and recorded.
+	if !names["org-ruleset-one"] || !names["org-ruleset-two"] {
+		t.Errorf("expected error rows for both rulesets, got %v", names)
+	}
+}
+
+func TestExtractErrorMessage(t *testing.T) {
+	// Mirrors go-gh's HTTPError.Error(): the status line, then one line per
+	// validation error (it joins httpError.Message with newlines).
+	multi := &api.HTTPError{
+		StatusCode: 422,
+		RequestURL: mustParseURL(t, "https://api.github.com/orgs/acme/rulesets"),
+		Message:    "Validation Failed\nInvalid bypass actor: '{{actor_id: 4}}'\nrepository_id is invalid",
+	}
+	single := &api.HTTPError{
+		StatusCode: 404,
+		RequestURL: mustParseURL(t, "https://api.github.com/orgs/acme/rulesets"),
+		Message:    "Not Found",
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "keeps every validation reason, not just the first",
+			err:  multi,
+			want: "Invalid bypass actor: '{{actor_id: 4}}'; repository_id is invalid",
+		},
+		{
+			// Nothing to trim, so the status is preserved rather than lost.
+			name: "single-line error kept verbatim",
+			err:  single,
+			want: "HTTP 404: Not Found (https://api.github.com/orgs/acme/rulesets)",
+		},
+		{
+			name: "plain error kept verbatim",
+			err:  errors.New("connection refused"),
+			want: "connection refused",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractErrorMessage(tt.err); got != tt.want {
+				t.Errorf("extractErrorMessage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parsing %q: %v", raw, err)
+	}
+	return u
+}
+
+func TestValidateOrgArg(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "single org passes", args: []string{"myorg"}},
+		{name: "no args", args: []string{}, wantErr: "organization argument is required"},
+		{
+			// An empty variable shifts a flag's value into an extra positional.
+			name:    "swallowed flag leaves extra positionals",
+			args:    []string{"myorg", "nodejs-api-demo", "expert-services.ghe.com"},
+			wantErr: "expected a single organization argument but received 3",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOrgArg(nil, tt.args)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got none", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }

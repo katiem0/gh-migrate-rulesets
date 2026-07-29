@@ -79,9 +79,9 @@ type Getter interface {
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
-	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) data.RepoRuleset
-	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
-	UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) (data.RepoRuleset, error)
+	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) (data.RepoRuleset, error)
+	UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) (data.RepoRuleset, error)
 }
 
 type APIGetter struct {

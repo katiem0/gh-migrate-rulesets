@@ -33,6 +33,30 @@ func newTestAPIGetter(t *testing.T, fn func(*http.Request) (*http.Response, erro
 	return &APIGetter{restClient: rest}
 }
 
+// newTestAPIGetterWithGraphQL is like newTestAPIGetter but also backs the GraphQL
+// client so REST and GraphQL methods can be exercised together. The round-trip
+// function should dispatch on req.URL.Path; GraphQL requests hit the "/graphql" path.
+func newTestAPIGetterWithGraphQL(t *testing.T, fn func(*http.Request) (*http.Response, error)) *APIGetter {
+	t.Helper()
+	rest, err := api.NewRESTClient(api.ClientOptions{
+		Host:      "github.com",
+		AuthToken: "test-token",
+		Transport: &mockRoundTripper{fn: fn},
+	})
+	if err != nil {
+		t.Fatalf("failed to build REST client: %v", err)
+	}
+	gql, err := api.NewGraphQLClient(api.ClientOptions{
+		Host:      "github.com",
+		AuthToken: "test-token",
+		Transport: &mockRoundTripper{fn: fn},
+	})
+	if err != nil {
+		t.Fatalf("failed to build GraphQL client: %v", err)
+	}
+	return &APIGetter{restClient: rest, gqlClient: gql}
+}
+
 func jsonResponse(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,

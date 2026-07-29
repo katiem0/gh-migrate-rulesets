@@ -225,32 +225,15 @@ gh migrate-rulesets create <target-org> --source-org <source-org> --dry-run
 
 #### Mapping bypass actor IDs
 
-Bypass actors for **teams**, **integrations/apps**, and **custom repository roles** are translated
-automatically by name or slug against the target organization. **Predefined repository roles** (e.g.
-`Write`, `Maintain`, `Admin`) cannot be resolved this way, because GitHub does not expose an API to
-look up predefined role IDs by name on the target. Their IDs are consistent across GitHub.com and GitHub
-Enterprise Cloud, but can differ on GitHub Enterprise Cloud with data residency (`*.ghe.com`) tenants.
+When moving rulesets between organizations or instances, bypass actor IDs for teams, custom
+repository roles, and apps often differ on the target. Use `--actor-mapping` to supply a `csv` that
+maps source bypass actor IDs to their target IDs — this is required for **predefined repository
+roles** (e.g. `Write`, `Maintain`, `Admin`), which cannot be resolved automatically by name. The
+mapping applies only to the live `--source-org` path and cannot be combined with `--from-file` (for
+file imports, set the target IDs directly in the exported `csv`'s bypass actor column).
 
-For those cases, supply an actor mapping `csv` with `--actor-mapping`. Each row maps a source actor
-ID to the corresponding target ID, keyed by `actor_type` and `source_id`. The mapping applies only to
-the live `--source-org` path. For `--from-file`, set the target IDs directly in the exported `csv`'s
-bypass actor column; `--actor-mapping` cannot be combined with `--from-file`. A ready-to-fill
-template is provided at [`docs/actor-mapping-template.csv`](docs/actor-mapping-template.csv):
-
-```csv
-actor_type,source_id,source_name,target_id
-RepositoryRole,2,Maintain,2
-RepositoryRole,4,Write,4
-RepositoryRole,5,Admin,7
-```
-
-The `source_name` column is a reference only and is ignored. Rows with a blank `target_id` fall back
-to the automatic name-based resolution, so you only need to fill in the IDs the target org actually
-differs on. An explicit mapping entry always wins, so `--actor-mapping` can also override a renamed
-team, app, or custom role.
-
-For instance-specific predefined repository role IDs (e.g. GitHub Enterprise Cloud with data residency),
-see [docs/predefined-repository-roles.md](docs/predefined-repository-roles.md).
+See [docs/predefined-repository-roles.md](docs/predefined-repository-roles.md) for the mapping `csv`
+format, a fillable template, per-platform role ID reference, and override behavior.
 
 > [!NOTE]
 > If a bypass actor ID is not mapped and cannot be resolved automatically, the ruleset is skipped and
