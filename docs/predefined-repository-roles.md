@@ -53,8 +53,8 @@ your own instances before relying on them, as they are not officially guaranteed
 To confirm the IDs on any instance yourself:
 
 1. In a single repository, create three rulesets and give each one a bypass actor for a different
-   predefined role (`Maintain`, `Write`, `Admin`). Naming each ruleset after its bypass actor makes the
-   output easier to read.
+   predefined role (`Maintain`, `Write`, `Admin`). Naming each ruleset after its bypass actor
+   makes the output easier to read.
 2. Run the following against that instance to list each ruleset's bypass actor IDs:
 
 ```sh
