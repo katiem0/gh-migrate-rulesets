@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/katiem0/gh-migrate-rulesets/internal/data"
 	"go.uber.org/zap"
 )
@@ -32,25 +35,27 @@ func (g *APIGetter) ParseRequiredWorkflowsForImport(owner string, value interfac
 	return workflows
 }
 
-func (g *APIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset {
+func (g *APIGetter) UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) (data.RepoRuleset, error) {
+	var errs error
 	for i, rule := range ruleset.Rules {
-		if rule.Type == "workflows" {
+		if rule.Type == "workflows" && rule.Parameters != nil {
 			for j, workflow := range rule.Parameters.Workflows {
 				zap.S().Debugf("Gathering target repository %d ID for each workflow", workflow.RepositoryID)
 				sourceWorkflowRepoQuery, err := s.GetRepoByID(workflow.RepositoryID)
 				if err != nil {
 					zap.S().Error("Failed to get repository data for workflow")
+					errs = errors.Join(errs, fmt.Errorf("required workflow: looking up source repository ID %d: %w", workflow.RepositoryID, err))
 					continue
-				} else {
-					workflowRepo, err := g.GetRepo(owner, sourceWorkflowRepoQuery.Name)
-					if err != nil {
-						zap.S().Error("Failed to get repository data for workflow")
-						continue
-					}
-					ruleset.Rules[i].Parameters.Workflows[j].RepositoryID = workflowRepo.Repository.DatabaseId
 				}
+				workflowRepo, err := g.GetRepo(owner, sourceWorkflowRepoQuery.Name)
+				if err != nil {
+					zap.S().Error("Failed to get repository data for workflow")
+					errs = errors.Join(errs, fmt.Errorf("required workflow: looking up repository %q in target org %s: %w", sourceWorkflowRepoQuery.Name, owner, err))
+					continue
+				}
+				ruleset.Rules[i].Parameters.Workflows[j].RepositoryID = workflowRepo.Repository.DatabaseId
 			}
 		}
 	}
-	return ruleset
+	return ruleset, errs
 }

@@ -160,7 +160,9 @@ Usage:
   migrate-rules create [flags] <organization>
 
 Flags:
+      --actor-mapping string     Path and Name of CSV file mapping source bypass actor IDs to target IDs (for predefined repository roles and renamed actors)
   -d, --debug                    To debug logging
+      --dry-run                  Preview ruleset creates without writing changes
   -f, --from-file string         Path and Name of CSV file to create rulesets from
   -h, --help                     help for create
       --hostname string          GitHub Enterprise Server hostname (default "github.com")
@@ -191,8 +193,8 @@ different destination repository. If `TargetRepositoryName` is empty, the destin
 `SourceRepositoryName`. Files exported by earlier versions that only contain a `RepositoryName`
 column remain supported and are treated as the source (and target) repository name.
 
-If specifying `--source-org` and/or `--repos`, the CLI extension will attempt to map the object
-based on name to the new ID under the target organization:
+If specifying `--source-org` and/or `--repos`, the CLI extension performs a live read from the source
+organization and attempts to map each object based on name to the new ID under the target organization:
 
 - Bypass Actors
   - Teams
@@ -202,6 +204,40 @@ based on name to the new ID under the target organization:
   - Context
 - Required Workflow
   - Repository
+
+This automatic name-based translation applies to the live `--source-org` (and optional `--repos`)
+path and resolves the IDs called out in the warning above for teams, integrations, custom roles,
+required workflow repositories, and status check integrations. The `--from-file` path is assumed to
+already contain the correct target IDs; edit the exported `csv` directly before importing it.
+
+`create` supports GitHub.com, GitHub Enterprise Server, and GitHub Enterprise Cloud with data
+residency through `--hostname` and `--source-hostname`. Both hostname flags default to `github.com`;
+use the target hostname with `--hostname` and the source hostname with `--source-hostname`.
+
+#### Previewing changes
+
+Use `--dry-run` to log the org and repository rulesets that would be created without writing any
+changes to the target:
+
+```sh
+gh migrate-rulesets create <target-org> --source-org <source-org> --dry-run
+```
+
+#### Mapping bypass actor IDs
+
+When moving rulesets between organizations or instances, bypass actor IDs for teams, custom
+repository roles, and apps often differ on the target. Use `--actor-mapping` to supply a `csv` that
+maps source bypass actor IDs to their target IDs — this is required for **predefined repository
+roles** (e.g. `Write`, `Maintain`, `Admin`), which cannot be resolved automatically by name. The
+mapping applies only to the live `--source-org` path and cannot be combined with `--from-file` (for
+file imports, set the target IDs directly in the exported `csv`'s bypass actor column).
+
+See [docs/predefined-repository-roles.md](docs/predefined-repository-roles.md) for the mapping `csv`
+format, a fillable template, per-platform role ID reference, and override behavior.
+
+> [!NOTE]
+> If a bypass actor ID is not mapped and cannot be resolved automatically, the ruleset is skipped and
+> written to the error `csv` file for manual follow-up.
 
 When the command finishes it logs a summary of how many rulesets were created successfully and how
 many failed, for example:

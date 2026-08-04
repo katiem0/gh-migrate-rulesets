@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -53,7 +54,7 @@ func GetAuthToken(token, hostname string) string {
 type Getter interface {
 	CreateOrgLevelRuleset(owner string, data io.Reader) error
 	CreateRepoLevelRuleset(ownerRepo string, data io.Reader) error
-	CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset
+	CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset
 	FetchOrgId(owner string) (*data.OrgIdQuery, error)
 	FetchOrgRulesets(owner string) ([]data.Rulesets, error)
 	FetchRepoRulesets(owner string, repos []data.RepoInfo) ([]data.RepoNameRule, error)
@@ -73,13 +74,14 @@ type Getter interface {
 	GetTeamData(ownerID int, teamID int) (*data.TeamInfo, error)
 	MapToParameters(owner string, paramsMap map[string]interface{}, ruleType string) *data.Parameters
 	ParametersToMap(params data.Parameters, ruleType string) map[string]string
-	ParseBypassActorsForImport(owner string, bypassActorsStr string) []data.BypassActor
+	ParseBypassActorsForImport(owner string, bypassActorsStr string, actorMapping map[string]int) []data.BypassActor
 	ParseRequiredWorkflowsForImport(owner string, value interface{}) []data.Workflows
 	ProcessActorsForExport(actors []data.BypassActor, owner string, orgID int, ruleID string) []string
 	ProcessRules(rules []data.Rules) map[string]string
 	RepoExists(ownerRepo string) bool
-	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
-	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) data.RepoRuleset
+	UpdateBypassActorID(owner string, sourceOrg string, sourceOrgID int, ruleset data.RepoRuleset, s Getter, actorMapping map[string]int) (data.RepoRuleset, error)
+	UpdateRequiredWorkflowRepoID(owner string, ruleset data.RepoRuleset, s Getter) (data.RepoRuleset, error)
+	UpdateStatusCheckIntegrationID(sourceOrg string, ruleset data.RepoRuleset, s Getter) (data.RepoRuleset, error)
 }
 
 type APIGetter struct {
@@ -277,7 +279,6 @@ func (g *APIGetter) GetAppInstallations(owner string) (*data.AppIntegrations, er
 }
 
 func getNextPageURL(linkHeader string) string {
-	const prefix = "https://api.github.com/"
 	links := strings.Split(linkHeader, ",")
 	for _, link := range links {
 		parts := strings.Split(strings.TrimSpace(link), ";")
@@ -287,7 +288,19 @@ func getNextPageURL(linkHeader string) string {
 		urlPart := strings.Trim(parts[0], "<>")
 		relPart := strings.TrimSpace(parts[1])
 		if relPart == `rel="next"` {
-			return strings.TrimPrefix(urlPart, prefix)
+			u, err := url.Parse(urlPart)
+			if err != nil {
+				return ""
+			}
+			path := u.Path
+			if path == "/api/v3" || strings.HasPrefix(path, "/api/v3/") {
+				path = strings.TrimPrefix(path, "/api/v3")
+			}
+			path = strings.TrimPrefix(path, "/")
+			if u.RawQuery != "" {
+				path = fmt.Sprintf("%s?%s", path, u.RawQuery)
+			}
+			return path
 		}
 	}
 	return ""
@@ -524,9 +537,12 @@ func (g *APIGetter) RepoExists(ownerRepo string) bool {
 	url := fmt.Sprintf("repos/%s", ownerRepo)
 	resp, err := g.restClient.Request("GET", url, nil)
 	if err != nil {
+		// Only a 404 means the repo genuinely does not exist; surface other errors
+		// (e.g. 401/403 auth or wrong hostname) so they aren't masked as "not found".
 		if resp != nil && resp.StatusCode == 404 {
 			return false
 		}
+		zap.S().Errorf("Unable to verify repository %s exists: %v", ownerRepo, err)
 		return false
 	}
 	defer func() {

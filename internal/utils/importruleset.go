@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []data.RepoRuleset {
+func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string, actorMapping map[string]int) []data.RepoRuleset {
 	var importRepoRuleset []data.RepoRuleset
 	var repoRuleset data.RepoRuleset
 	headerMap := make(map[string]int)
@@ -28,7 +28,7 @@ func (g *APIGetter) CreateRepoRulesetsData(owner string, fileData [][]string) []
 		repoRuleset.Source = determineSource(owner, each[headerMap["RulesetLevel"]], sourceRepo)
 		repoRuleset.TargetSource = determineSource(owner, each[headerMap["RulesetLevel"]], targetRepo)
 		repoRuleset.Enforcement = each[headerMap["Enforcement"]]
-		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]])
+		repoRuleset.BypassActors = g.ParseBypassActorsForImport(owner, each[headerMap["BypassActors"]], actorMapping)
 		repoRuleset.Conditions = parseConditions(each[headerMap["ConditionsRefNameInclude"] : headerMap["ConditionRepoPropertyExclude"]+1])
 		ruleHeaders := data.RuleHeaders()
 		ruleValues := make([]string, len(ruleHeaders))
